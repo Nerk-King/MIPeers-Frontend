@@ -1,12 +1,39 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { documents, type KnowledgeDocument } from '../data'
+import { ref, onMounted } from 'vue'
+import { getKnowledgeTree } from '../services/knowledge'
+import type { KnowledgeDocument, KnowledgeNode } from '../data'
 import Icon from './Icon.vue'
+import KnowledgeTreeNode from './KnowledgeTreeNode.vue'
+
 defineProps<{ active?: string[] }>()
-defineEmits<{ open: [doc: KnowledgeDocument] }>()
-const closed = ref<string[]>([])
-const categories = [...new Set(documents.map(d => d.category))]
-const folders = (category: string) => [...new Set(documents.filter(d => d.category === category).map(d => d.folder))]
-function toggle(key: string) { closed.value = closed.value.includes(key) ? closed.value.filter(k => k !== key) : [...closed.value, key] }
+const emit = defineEmits<{ open: [doc: KnowledgeDocument] }>()
+
+const tree = ref<KnowledgeNode[]>([])
+const docs = ref<KnowledgeDocument[]>([])
+const loading = ref(true)
+const error = ref('')
+
+onMounted(load)
+async function load() {
+ loading.value = true
+ error.value = ''
+ try {
+  const data = await getKnowledgeTree()
+  tree.value = data.tree
+  docs.value = data.documents
+ } catch {
+  error.value = 'Could not load the knowledge library. Please try again.'
+ } finally {
+  loading.value = false
+ }
+}
 </script>
-<template><div class="knowledge-tree"><div v-for="category in categories" :key="category"><button class="tree-folder" @click="toggle(category)" :aria-expanded="!closed.includes(category)"><Icon :name="closed.includes(category) ? 'ChevronRight' : 'ChevronDown'" :size="14"/><Icon name="Folder" :size="19"/><span>{{ category }}</span></button><div v-if="!closed.includes(category)" class="tree-level"><div v-for="folder in folders(category)" :key="folder"><button class="tree-folder" @click="toggle(folder)" :aria-expanded="!closed.includes(folder)"><Icon :name="closed.includes(folder) ? 'ChevronRight' : 'ChevronDown'" :size="13"/><Icon name="Folder" :size="17"/><span>{{ folder }}</span></button><div v-if="!closed.includes(folder)" class="tree-files"><button v-for="doc in documents.filter(d => d.folder === folder)" :key="doc.id" :class="['tree-file', { cited: active?.includes(doc.id) }]" @click="$emit('open', doc)"><Icon name="FileText" :size="15"/><span>{{ doc.name }}</span><small v-if="active?.includes(doc.id)">{{ doc.pages }}</small></button></div></div></div></div></div></template>
+<template>
+ <div class="knowledge-tree">
+  <p v-if="loading" class="tree-status"><Icon name="Sparkles" :size="14"/> Loading knowledge sources…</p>
+  <p v-else-if="error" class="tree-status tree-error">{{ error }}</p>
+  <template v-else>
+   <KnowledgeTreeNode v-for="node in tree" :key="node.id" :node="node" :active="active" :documents="docs" :expanded="true" @open="emit('open', $event)"/>
+  </template>
+ </div>
+</template>
