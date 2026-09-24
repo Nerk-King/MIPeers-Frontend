@@ -31,3 +31,28 @@ Source IDs currently reference `src/data.ts`; replace that catalogue with your b
 ## Verification
 
 The production build checks Vue templates and TypeScript. The demo adapter can be exercised using `node scripts/check-rag.mjs`. Browser interaction/visual testing is still a separate validation step.
+
+## Local knowledge uploads
+
+Knowledge Library → **Upload data** opens a panel with file, folder, link, text,
+sitemap, and Q&A inputs. Resources and original file blobs are stored in this
+browser's IndexedDB database (`mipeers-library`), not sent to a server. They appear
+in the library tree, document count, and search results immediately after saving.
+Resource previews support downloading originals/text exports and removing entries.
+Folder uploads preserve their directory hierarchy.
+
+Limits: 100 resources per batch, 20 MB per file, 50 MB per file batch, 200,000
+characters per text resource, and 2 MB per sitemap XML input. Invalid batches
+leave the form available for correction. Files are saved in a single transaction.
+
+Plain-text files have text previews; PDF, Office, and other binary formats retain
+their original bytes for download. Links are references. Sitemap XML adds the
+listed URLs (up to 100); a sitemap URL or a sitemap-index entry is saved as a
+reference and is not recursively fetched. These resources are **not AI-indexed**.
+The former placeholder Synchronize action has been replaced by an explicit local
+storage notice. Crawling, automatic folder/cloud synchronization, shared access,
+and AI indexing need a backend integration.
+
+Clearing this site's browser data removes local uploads. Local resources are
+shared within this browser profile's prototype workspace, not isolated by the
+demo login. Use downloads to retain copies outside the browser.

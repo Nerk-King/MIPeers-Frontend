@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getKnowledgeTree } from '../services/knowledge'
+import { uploadRevision } from '../services/uploads'
 import type { KnowledgeDocument, KnowledgeNode } from '../data'
 import Icon from './Icon.vue'
 import KnowledgeTreeNode from './KnowledgeTreeNode.vue'
@@ -14,6 +15,7 @@ const loading = ref(true)
 const error = ref('')
 
 onMounted(load)
+watch(uploadRevision, load)
 async function load() {
  loading.value = true
  error.value = ''

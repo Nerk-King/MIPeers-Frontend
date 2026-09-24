@@ -24,3 +24,7 @@
 @media (max-width: 700px) {
  .agent-orb .agent-pet { width: 24px; height: 24px; }
 }
+
+.upload-drawer { width: min(580px, 100%); }
+.local-resource-actions > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.local-resource-actions p { line-height: 1.7; }
