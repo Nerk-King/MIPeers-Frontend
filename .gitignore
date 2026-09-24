@@ -4,3 +4,4 @@ dist/
 *.tsbuildinfo
 .sites-runtime/
 .pnpm-store/
+Thumbs.db
