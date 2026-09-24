@@ -10,11 +10,11 @@
 .agent-card > .pet-portrait {
  width: 132px;
  height: 132px;
- border-radius: 32px;
+ display: inline-flex; align-items: center; justify-content: center;
  margin-bottom: 20px;
- background: radial-gradient(ellipse at 50% 65%, #64d8b51c, #16243b66 65%, transparent);
- border: 1px solid #6ba7a326;
- box-shadow: inset 0 0 28px #7fd6c008;
+ background: transparent;
+ border: 0;
+ box-shadow: none;
 }
 .agent-card > .pet-portrait .agent-pet { width: 112px; height: 112px; }
 .asker-avatar { width: 76px; height: 76px; }
