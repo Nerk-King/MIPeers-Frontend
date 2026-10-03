@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 
-const props = withDefaults(defineProps<{ color?: string; icon?: string; size?: number; animated?: boolean }>(), {
- color: 'purple', size: 24, animated: true,
+const props = withDefaults(defineProps<{ color?: string; icon?: string; size?: number; animated?: boolean; sad?: boolean }>(), {
+ color: 'purple', size: 24, animated: true, sad: false,
 })
 const uid = useId()
 const shell = 'pet-shell-' + uid
@@ -14,7 +14,7 @@ const detailed = computed(() => props.size >= 30)
 
 <template>
  <svg :width="size" :height="size" viewBox="0 0 112 112" fill="none" aria-hidden="true"
-  :class="['agent-pet', 'pet-' + role, { 'is-animated': animated }]">
+  :class="['agent-pet', 'pet-' + role, { 'is-animated': animated && !sad, 'is-sad': sad }]">
   <defs>
    <linearGradient :id="shell" x1="27" y1="24" x2="89" y2="87" gradientUnits="userSpaceOnUse">
     <stop stop-color="#d1f967"/><stop offset=".42" stop-color="#85d332"/><stop offset=".72" stop-color="#22c8b7"/><stop offset="1" stop-color="#078ca9"/>
@@ -48,20 +48,35 @@ const detailed = computed(() => props.size >= 30)
     <path d="m40 65 16 9 16-9M50 71v8m12-8v8" :stroke="accent" stroke-width="2"/>
    </g>
    <g class="pet-head">
-    <path d="M56 25v-9" stroke="#79b8b9" stroke-width="3"/>
-    <circle cx="56" cy="13" r="5" fill="#b6ed51"/>
-    <circle cx="55" cy="12" r="1.6" fill="#f0ffd5" stroke="none"/>
+    <template v-if="sad">
+     <path d="M56 25q2 6 8 8" stroke="#5c6b78" stroke-width="3"/>
+     <circle cx="65" cy="34" r="4" fill="#79899a"/>
+    </template>
+    <template v-else>
+     <path d="M56 25v-9" stroke="#79b8b9" stroke-width="3"/>
+     <circle cx="56" cy="13" r="5" fill="#b6ed51"/>
+     <circle cx="55" cy="12" r="1.6" fill="#f0ffd5" stroke="none"/>
+    </template>
     <rect x="21" y="37" width="12" height="20" rx="6" fill="#0c99ac"/>
     <rect x="79" y="37" width="12" height="20" rx="6" fill="#0c99ac"/>
     <rect x="26" y="23" width="60" height="46" rx="21" :fill="'url(#' + shell + ')'"/>
     <path d="M34 34q4-8 14-7" stroke="#eeffc2" stroke-width="3" opacity=".8"/>
     <rect x="32" y="32" width="48" height="30" rx="13" :fill="'url(#' + face + ')'"/>
     <path d="M39 37q9-4 18-2" stroke="#27889a" stroke-width="2" opacity=".55"/>
-    <g class="pet-eyes" stroke="#64f5f5" stroke-width="4">
-     <path d="M42 46q3-7 6 0M64 46q3-7 6 0"/>
-    </g>
-    <path d="M50 53q6 7 12 0" fill="#64f5f5" stroke="#64f5f5" stroke-width="1.5"/>
-    <g fill="#b0f25b" stroke="none" opacity=".7"><ellipse cx="40" cy="52" rx="3" ry="1.7"/><ellipse cx="72" cy="52" rx="3" ry="1.7"/></g>
+    <template v-if="sad">
+     <path d="M37 41q3-3 7-1.5M69 41q-3-3-7-1.5" stroke="#7c8ca0" stroke-width="2" stroke-linecap="round" fill="none"/>
+     <g class="pet-eyes" stroke="#64c7e8" stroke-width="4">
+      <path d="M42 45q3 6 6 0M64 45q3 6 6 0"/>
+     </g>
+     <path d="M50 56q6-6 12 0" fill="none" stroke="#64c7e8" stroke-width="1.5"/>
+    </template>
+    <template v-else>
+     <g class="pet-eyes" stroke="#64f5f5" stroke-width="4">
+      <path d="M42 46q3-7 6 0M64 46q3-7 6 0"/>
+     </g>
+     <path d="M50 53q6 7 12 0" fill="#64f5f5" stroke="#64f5f5" stroke-width="1.5"/>
+     <g fill="#b0f25b" stroke="none" opacity=".7"><ellipse cx="40" cy="52" rx="3" ry="1.7"/><ellipse cx="72" cy="52" rx="3" ry="1.7"/></g>
+    </template>
     <g v-if="role === 'business'" :stroke="accent" stroke-width="1.7">
      <rect x="37" y="39" width="15" height="12" rx="5"/><rect x="60" y="39" width="15" height="12" rx="5"/><path d="M52 43h8"/>
     </g>
@@ -120,6 +135,7 @@ const detailed = computed(() => props.size >= 30)
  .is-animated .pet-paw-left { animation: pet-type .7s ease-in-out infinite; }
  .is-animated .pet-paw-right { animation: pet-type .7s ease-in-out -.35s infinite; }
  .is-animated .pet-spark { animation: pet-twinkle 3s ease-in-out infinite; }
+ .is-sad .pet-body { animation: pet-sigh 3.6s ease-in-out infinite; }
 }
 @keyframes pet-hop { 0%, 60%, 100% { transform: translateY(0); } 25% { transform: translateY(-5px) rotate(-3deg); } 42% { transform: translateY(0) scale(1.025,.975); } }
 @keyframes pet-wave { 0%, 55%, 100% { transform: rotate(0); } 15%, 35% { transform: rotate(17deg); } 25%, 45% { transform: rotate(-9deg); } }
@@ -130,4 +146,5 @@ const detailed = computed(() => props.size >= 30)
 @keyframes pet-focus { 0%, 100% { transform: rotate(-3deg); } 50% { transform: translateY(1px) rotate(3deg); } }
 @keyframes pet-type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes pet-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes pet-sigh { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2px) scale(1.01,.985); } }
 </style>

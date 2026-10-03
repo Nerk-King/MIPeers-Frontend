@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Mail, Lock } from 'lucide-vue-next'
+import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next'
 import heroImage from './Mipeers logo.jpg'
 import { signIn } from './services/auth'
+import AgentAvatar from './components/AgentAvatar.vue'
 const router = useRouter()
 const username = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const error = ref('')
 const pending = ref(false)
 async function submit() {
@@ -22,6 +24,7 @@ async function submit() {
   pending.value = false
  }
 }
+function dismissError() { error.value = '' }
 </script>
 
 <template>
@@ -33,8 +36,7 @@ async function submit() {
    </div>
    <form class="login-form" @submit.prevent="submit" novalidate>
     <label class="login-field"><Mail :size="18" /><input v-model="username" type="text" placeholder="Username" autocomplete="username" aria-label="Username" :disabled="pending" /></label>
-    <label class="login-field"><Lock :size="18" /><input v-model="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password" :disabled="pending" /></label>
-    <p v-if="error" class="login-error" role="alert">{{ error }}</p>
+    <label class="login-field"><Lock :size="18" /><input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Password" autocomplete="current-password" aria-label="Password" :disabled="pending" /><button type="button" class="login-password-toggle" :aria-label="showPassword ? 'Hide password' : 'Show password'" :disabled="pending" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></label>
     <div class="login-links"><a href="#" class="login-forgot" @click.prevent>Forgot your password?</a></div>
     <p class="login-register"><span>Don't have an account?</span> <a href="#" @click.prevent>Register</a></p>
     <button type="submit" class="login-submit" :disabled="pending">{{ pending ? 'Signing in…' : 'Login' }}</button>
@@ -42,6 +44,15 @@ async function submit() {
   </section>
 
   <section class="login-hero" :style="{ backgroundImage: `url(${heroImage})` }" role="img" aria-label="MIPeers, your everyday work assistant"></section>
+
+  <div v-if="error" class="login-error-overlay" @click.self="dismissError">
+   <div class="login-error-modal" role="alertdialog" aria-modal="true" aria-label="Sign-in error">
+    <AgentAvatar color="purple" :size="76" sad/>
+    <h3>We couldn't sign you in</h3>
+    <p>{{ error }}</p>
+    <button class="login-error-dismiss" autofocus @click="dismissError">Try again</button>
+   </div>
+  </div>
  </div>
 </template>
 
@@ -59,7 +70,9 @@ async function submit() {
 .login-field input { flex: 1; min-width: 0; background: transparent; border: 0; color: #fff; font-size: 17px; }
 .login-field input:focus-visible { outline: none; }
 .login-field input::placeholder { color: #fff; }
-.login-error { color: #f3a1ae; font-size: 12px; margin: -18px 0 20px; }
+.login-field input::-ms-reveal, .login-field input::-ms-clear { display: none; }
+.login-password-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted); padding: 2px; }
+.login-password-toggle:hover:not(:disabled) { color: #fff; }
 .login-links { display: flex; justify-content: flex-end; margin-bottom: 34px; }
 .login-forgot { color: var(--muted); font-size: 12.5px; }
 .login-forgot:hover { color: #fff; }
@@ -71,6 +84,15 @@ async function submit() {
 
 /* right hero illustration */
 .login-hero { flex: 1; min-width: 0; background-repeat: no-repeat; background-position: center; background-size: cover; background-color: #0c1728; }
+
+/* sign-in error popup */
+.login-error-overlay { position: fixed; inset: 0; background: #01050bb3; backdrop-filter: blur(5px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.login-error-modal { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; max-width: 360px; padding: 34px 30px 30px; background: linear-gradient(155deg, #0e1a2f, #0a1322); border: 1px solid #2c3a51; border-radius: 16px; box-shadow: 0 20px 60px #0008; animation: login-error-in .2s ease; }
+.login-error-modal h3 { margin: 0; font-size: 18px; color: #edf0f8; }
+.login-error-modal p { margin: 0; font-size: 13px; line-height: 1.7; color: #a9b4cb; }
+.login-error-dismiss { margin-top: 6px; background: #7653da; border: 1px solid #9171e7; color: #fff; font-weight: 700; font-size: 13px; padding: 11px 28px; border-radius: 8px; box-shadow: 0 8px 20px #0004; }
+.login-error-dismiss:hover { background: #8962e9; }
+@keyframes login-error-in { from { transform: translateY(8px) scale(.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
 
 @media (max-width: 900px) {
  .login-hero { display: none; }
