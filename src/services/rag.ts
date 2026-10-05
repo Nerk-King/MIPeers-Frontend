@@ -3,32 +3,33 @@ import { documents } from '../data'
 import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
 
-export interface RagRequest { question: string; agentId: string; title: string; history: { role: string; content: string }[] }
+export interface RagRequest { question: string; agentId: string; title: string; context: string }
 export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
 export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number; truncated: boolean }
 
 // Budget for pcContext specifically, measured as URL-encoded length (not raw JSON length) since
-// that's what actually determines request-line size. The original 4000-char estimate turned out to
-// be too generous in practice, so this is 3/4 of that (3000). TODO: pcContext is a query param only
-// because ragAsk's contract was already built that way (GET + query string) — moving context into
-// the request body would remove this size constraint entirely, but that's a backend contract change,
-// not something this adapter can do alone.
-export const CONTEXT_CHAR_LIMIT = 3000
+// that's what actually determines request-line size. Tuned down from 3000 -> 1500 -> 750 (too
+// tight, reset almost every turn) -> 1250. TODO: pcContext is a query param only because ragAsk's
+// contract was already built that way (GET + query string) — moving context into the request body
+// would remove this size constraint entirely, but that's a backend contract change, not something
+// this adapter can do alone.
+export const CONTEXT_CHAR_LIMIT = 1250
 
 /**
- * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext, trimming the
- * oldest turns first (so the most recent exchanges are kept) until the encoded result fits within
- * limitChars. Exported so the UI can show the same usage/limit the request will actually use.
+ * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext. Unlike a
+ * sliding window, this doesn't drop the oldest turns one at a time — once the full history no
+ * longer fits within limitChars, the whole context is cleared (the model starts fresh from that
+ * point) rather than sending a partially-trimmed window. Exported so the UI can show the same
+ * usage/limit the request will actually use.
  */
 export function buildChatContext(history: { role: string; content: string }[], limitChars = CONTEXT_CHAR_LIMIT): ChatContext {
  const entries = history.map(m => ({ author: m.role === 'user' ? 'USER' : 'NUCLIA', text: m.content }))
- let truncated = false
  let context = entries.length ? JSON.stringify(entries) : ''
- while (entries.length && encodeURIComponent(context).length > limitChars) {
-  entries.shift()
+ let truncated = false
+ if (encodeURIComponent(context).length > limitChars) {
+  context = ''
   truncated = true
-  context = entries.length ? JSON.stringify(entries) : ''
  }
  const usedChars = encodeURIComponent(context).length
  return { context, usedChars, limitChars, percent: Math.min(100, Math.round((usedChars / limitChars) * 100)), truncated }
@@ -47,9 +48,10 @@ function demoSources(ids: string[]): RagSource[] {
 /**
  * Calls the ilDecision:ragAsk service for every chat message, authenticated with the session
  * returned by the login API ("Session:<token>" — note no backslash here, unlike the raw value the
- * login response itself echoes back). pcTitle carries the chat's own title. The prior conversation
- * turns go in pcContext as [{author: 'USER'|'NUCLIA', text}], trimmed to fit CONTEXT_CHAR_LIMIT
- * (see buildChatContext). On success the service returns:
+ * login response itself echoes back). pcTitle carries the chat's own title. request.context is the
+ * already-built pcContext value (see buildChatContext) — the caller owns deciding which slice of
+ * history it represents, since resetting it once it overflows is a stateful, per-conversation
+ * decision this function has no way to track on its own. On success the service returns:
  * { rqResponse: { opcResponse, opcResources, opcPageNumber } } — opcResponse is the answer text;
  * opcResources/opcPageNumber are comma-delimited lists, position-aligned with each other.
  */
@@ -69,8 +71,7 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   pcQuery: request.question,
   pcTitle: request.title,
  })
- const { context } = buildChatContext(request.history)
- if (context) params.set('pcContext', context)
+ if (request.context) params.set('pcContext', request.context)
  const timeout = withTimeout(signal, 45000)
  try {
   const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal: timeout.signal })
