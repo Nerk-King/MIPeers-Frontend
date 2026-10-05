@@ -91,7 +91,7 @@ async function submit() {
 <template>
  <div class="upload-data">
   <p class="upload-intro">Give your knowledge a home. Choose a source to add to your library.</p>
-  <div class="upload-local-note"><Icon name="Shield" :size="18"/><span><strong>Saved on this device</strong>Resources stay in this browser. They are not synced or indexed for AI answers.</span></div>
+  <div class="upload-local-note"><Icon name="Shield" :size="18"/><span><strong>Local only</strong>Files stay in this browser. They are not sent to the knowledge base or indexed for AI answers.</span></div>
   <div class="upload-grid" role="group" aria-label="Resource type">
    <button v-for="item in sources" :key="item.id" type="button" :class="['upload-tile', { selected: source === item.id }]" :aria-pressed="source === item.id" :disabled="busy" @click="source = item.id">
     <Icon :name="item.icon" :size="22"/><strong>{{ item.label }}</strong><small>{{ item.description }}</small>
@@ -153,9 +153,11 @@ async function submit() {
 .upload-data { --upload-surface: #101c2e; --upload-soft: #142137; --upload-text: #e0e7f3; --upload-selected: #28213f; color: var(--upload-text); }
 :global([data-theme="light"] .upload-data) { --upload-surface: #fff; --upload-soft: #f3f6fc; --upload-text: #202d45; --upload-selected: #f0eafa; }
 .upload-intro { color: var(--muted); font-size: 14px; line-height: 1.7; margin: 0 0 20px; }
-.upload-local-note { display:flex; gap:11px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--upload-soft); color:var(--muted); font-size:12px; line-height:1.6; margin-bottom:24px; }
-.upload-local-note svg { color:var(--purple); margin-top:3px; }
-.upload-local-note strong { display:block; color:var(--upload-text); margin-bottom:3px; }
+.upload-local-note { display:flex; gap:11px; padding:14px; border:1px solid #8a5a22; border-radius:10px; background:#3a2a12; color:#f3c177; font-size:12px; line-height:1.6; margin-bottom:24px; }
+.upload-local-note svg { color:#efb166; margin-top:3px; }
+.upload-local-note strong { display:block; font-weight:600; margin-bottom:3px; }
+:global([data-theme="light"] .upload-local-note) { border-color:#e0a458; background:#fdf1e0; color:#8a5a22; }
+:global([data-theme="light"] .upload-local-note svg) { color:#b9752c; }
 .upload-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:28px; }
 .upload-tile { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-height:113px; padding:15px 12px; border:1px solid var(--line); border-radius:12px; background:var(--upload-surface); color:var(--upload-text); text-align:left; }
 .upload-tile strong { font-size:12px; }

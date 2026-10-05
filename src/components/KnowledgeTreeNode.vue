@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from './Icon.vue'
 import KnowledgeTreeNode from './KnowledgeTreeNode.vue'
 import type { KnowledgeDocument, KnowledgeNode } from '../data'
@@ -14,6 +14,10 @@ function openFile() {
  const doc = props.documents.find(d => d.id === (props.node as { documentId: string }).documentId)
  if (doc) emit('open', doc)
 }
+// "active" is a list of source document names (from the latest answer's citations), not ids —
+// resolve this node's documentId to a name before matching.
+const matchedName = computed(() => { const node = props.node; return node.type === 'file' ? props.documents.find(d => d.id === node.documentId)?.name : undefined })
+const isCited = computed(() => !!matchedName.value && !!props.active?.includes(matchedName.value))
 </script>
 <template>
  <div v-if="node.type === 'folder'">
@@ -27,9 +31,9 @@ function openFile() {
    <KnowledgeTreeNode v-for="child in node.children" :key="child.id" :node="child" :active="active" :documents="documents" @open="emit('open', $event)"/>
   </div>
  </div>
- <button v-else :class="['tree-file', { cited: active?.includes(node.documentId) }]" @click="openFile">
+ <button v-else :class="['tree-file', { cited: isCited }]" @click="openFile">
   <Icon name="FileText" :size="15"/>
   <span>{{ node.name }}</span>
-  <small v-if="active?.includes(node.documentId)">cited</small>
+  <small v-if="isCited">cited</small>
  </button>
 </template>

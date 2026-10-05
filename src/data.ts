@@ -3,7 +3,13 @@ export const agents = [
  { id: 'settlement', name: 'BizWise', short: 'Business & operations', description: 'Your business specialist for settlement policies, clearing procedures, and operational calendars.', tags: ['Business', 'Operations'], color: 'blue', icon: 'Briefcase' },
  { id: 'product', name: 'DevMate', short: 'Developer', description: 'Your developer companion for API integration, product features, and technical documentation.', tags: ['Developer', 'Technical'], color: 'green', icon: 'Code2' }
 ]
-export const documents = [
+export interface KnowledgeDocument {
+ id: string; name: string; category: string; folder: string; pages: string; date: string; content: string
+ /** Present for documents returned by the real knowledge base (ragKnowledgeBase); absent for samples/local uploads. */
+ downloadLink?: string
+}
+
+export const documents: KnowledgeDocument[] = [
  { id: 'policy', name: 'Settlement Policy v3.2.pdf', category: 'Settlement & Clearing', folder: 'Settlement Policies', pages: '4–6', date: '03 Sep 2026', content: 'Illustrative document preview\n\nThis demo policy covers settlement timelines, cut-off times, settlement instructions, exception handling, and non-business days.\n\nConnect your knowledge service to retrieve the actual document and verified policy text. The original policy file is not included in this prototype.' },
  { id: 'old-policy', name: 'Settlement Policy v3.1.pdf', category: 'Settlement & Clearing', folder: 'Settlement Policies · Archive', pages: '3–5', date: '12 Jun 2026', content: 'Illustrative archived policy. This version is retained for reference. Connect the document service to load version history and original content.' },
  { id: 'procedures', name: 'Settlement Procedures Guide.docx', category: 'Settlement & Clearing', folder: 'Settlement Procedures', pages: '8', date: '01 Sep 2026', content: 'Illustrative procedure guide\n\n1. Review the settlement instruction.\n2. Validate required information.\n3. Monitor processing status.\n4. Escalate exceptions to the operations team.\n\nDemo content only; verify procedures against your connected source.' },
@@ -14,7 +20,6 @@ export const documents = [
  { id: 'api', name: 'API Integration Guide.md', category: 'Source Code', folder: 'Developer Guides', pages: '1', date: '04 Sep 2026', content: 'Integration overview\n\nThe frontend calls a configurable application backend through src/services/rag.ts. Keep service credentials on the backend. Return an answer and source identifiers to render citations.' },
  { id: 'changelog', name: 'Changelog.md', category: 'Source Code', folder: 'Developer Guides', pages: '1', date: '12 Sep 2026', content: 'Illustrative changelog\n\nv0.1.0 — Initial prototype workspace, sample agents, and demo knowledge library.\n\nConnect your source control or release system to load the real changelog.' }
 ]
-export type KnowledgeDocument = typeof documents[number]
 
 export type KnowledgeFolder = { id: string; name: string; type: 'folder'; children: KnowledgeNode[] }
 export type KnowledgeFile = { id: string; name: string; type: 'file'; documentId: string }

@@ -44,6 +44,12 @@
 :root[data-theme="light"] .orange { color: #92540f!important; background-color: #fff0db; }
 :root[data-theme="light"] .blue { color: #2f63ae!important; background-color: #e5effe; }
 :root[data-theme="light"] :is(.badge, .demo-pill) { color: #5d409e; background: #eee8fa; border-color: #d5c6ee; }
+:root[data-theme="light"] .live-toggle { color: #5d409e; background: #eee8fa; border-color: #d5c6ee; }
+:root[data-theme="light"] .live-toggle:hover { background: #e3d8f7; color: #3f2370; }
+:root[data-theme="light"] .live-toggle-dot { background: #8a63d6; }
+:root[data-theme="light"] .live-toggle.live { color: #1a7a51; background: #e1f3ea; border-color: #bce3d0; }
+:root[data-theme="light"] .live-toggle.live:hover { background: #cfeee0; color: #0f5c3c; }
+:root[data-theme="light"] .live-toggle.live .live-toggle-dot { background: #22a873; box-shadow: 0 0 6px #22a87355; }
 :root[data-theme="light"] .user .message-body { background: linear-gradient(125deg, #ede3fc, #e8eafa); border-color: #d8c7ee; }
 :root[data-theme="light"] .message-actions button { color: #64738c; }
 :root[data-theme="light"] :is(.message-actions button:hover, .message-actions button.selected) { color: #6c40b1; background: #eee5fa; }

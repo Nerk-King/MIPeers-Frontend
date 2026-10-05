@@ -1,47 +1,100 @@
 import { sessionToken } from './auth'
+import { documents } from '../data'
+import { withTimeout } from './timeout'
+import { isLive } from './liveMode'
 
-export interface RagRequest { question: string; agentId: string; history: { role: string; content: string }[] }
-export interface RagResponse { answer: string; sourceIds: string[] }
+export interface RagRequest { question: string; agentId: string; title: string; history: { role: string; content: string }[] }
+export interface RagSource { name: string; page: string }
+export interface RagResponse { answer: string; sources: RagSource[] }
+export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number; truncated: boolean }
+
+// Budget for pcContext specifically, measured as URL-encoded length (not raw JSON length) since
+// that's what actually determines request-line size. The original 4000-char estimate turned out to
+// be too generous in practice, so this is 3/4 of that (3000). TODO: pcContext is a query param only
+// because ragAsk's contract was already built that way (GET + query string) — moving context into
+// the request body would remove this size constraint entirely, but that's a backend contract change,
+// not something this adapter can do alone.
+export const CONTEXT_CHAR_LIMIT = 3000
+
+/**
+ * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext, trimming the
+ * oldest turns first (so the most recent exchanges are kept) until the encoded result fits within
+ * limitChars. Exported so the UI can show the same usage/limit the request will actually use.
+ */
+export function buildChatContext(history: { role: string; content: string }[], limitChars = CONTEXT_CHAR_LIMIT): ChatContext {
+ const entries = history.map(m => ({ author: m.role === 'user' ? 'USER' : 'NUCLIA', text: m.content }))
+ let truncated = false
+ let context = entries.length ? JSON.stringify(entries) : ''
+ while (entries.length && encodeURIComponent(context).length > limitChars) {
+  entries.shift()
+  truncated = true
+  context = entries.length ? JSON.stringify(entries) : ''
+ }
+ const usedChars = encodeURIComponent(context).length
+ return { context, usedChars, limitChars, percent: Math.min(100, Math.round((usedChars / limitChars) * 100)), truncated }
+}
 
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts)
 // so the sandbox's CORS allowlist (which a local dev server won't match) never blocks the response.
 const DEFAULT_RAG_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/rest.w' : 'https://mn2503.ils.mip.co.za/web_pvtken/rest.w'
 const RAG_ENDPOINT = import.meta.env.VITE_RAG_ENDPOINT || DEFAULT_RAG_ENDPOINT
 
-/** Demo mode is on by default (safe for anyone pulling the repo). Set VITE_RAG_DEMO=false to call the real ragAsk service. */
-export const demoMode = import.meta.env.VITE_RAG_DEMO !== 'false'
+/** Resolves demo-mode source ids against the local sample documents, for display-only {name, page} pairs. */
+function demoSources(ids: string[]): RagSource[] {
+ return ids.map(id => { const doc = documents.find(d => d.id === id); return { name: doc?.name ?? id, page: doc?.pages ?? '—' } })
+}
 
 /**
  * Calls the ilDecision:ragAsk service for every chat message, authenticated with the session
- * returned by the login API. The response contract from this service isn't mapped yet — once it is,
- * replace the TODO below with real field extraction for `answer` and `sourceIds`.
+ * returned by the login API ("Session:<token>" — note no backslash here, unlike the raw value the
+ * login response itself echoes back). pcTitle carries the chat's own title. The prior conversation
+ * turns go in pcContext as [{author: 'USER'|'NUCLIA', text}], trimmed to fit CONTEXT_CHAR_LIMIT
+ * (see buildChatContext). On success the service returns:
+ * { rqResponse: { opcResponse, opcResources, opcPageNumber } } — opcResponse is the answer text;
+ * opcResources/opcPageNumber are comma-delimited lists, position-aligned with each other.
  */
 export async function askKnowledge(request: RagRequest, signal?: AbortSignal): Promise<RagResponse> {
- if (demoMode) {
+ if (!isLive.value) {
   await new Promise(resolve => setTimeout(resolve, 850))
   if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
-  if (/settle|holiday|clearing/i.test(request.question)) return { answer: 'Settlement guidance brings together the policy, operating procedures, and business calendar. Here are the areas to check:\n\n1. Settlement timeline — confirm the applicable cycle for the product and market.\n2. Cut-off times — review the deadline for submitting and amending instructions.\n3. Required instructions — validate the details before processing.\n4. Exceptions — follow the escalation procedure for failed or delayed settlements.\n5. Holidays — check the relevant business calendar for date adjustments.\n\nOpen the sources below to explore the sample documents. This is a demo answer, not verified operational guidance.', sourceIds: ['policy', 'procedures', 'calendar'] }
-  if (/api|oauth|code|integrat/i.test(request.question)) return { answer: 'Start with the API Integration Guide to explore the integration workflow. A typical implementation authenticates through your application backend, sends the question and conversation context, and returns an answer with source references.\n\nThe frontend already has a dedicated service adapter for that handoff. Your backend can handle authentication and the Progress Agentic RAG connection.\n\nThis is a sample response; connect your knowledge service for answers grounded in your documentation.', sourceIds: ['api', 'manual'] }
-  return { answer: `Here is a starting point for “${request.question}”.\n\nUse the knowledge library to explore product documentation and policies, or choose a specialist agent to narrow your question. You can open source references, ask a follow-up, and bookmark useful answers.\n\nThis workspace is currently in demo mode. Once connected, your knowledge service will generate a grounded answer here using your organization's documents.`, sourceIds: ['manual'] }
+  if (/settle|holiday|clearing/i.test(request.question)) return { answer: 'Settlement guidance brings together the policy, operating procedures, and business calendar. Here are the areas to check:\n\n1. Settlement timeline — confirm the applicable cycle for the product and market.\n2. Cut-off times — review the deadline for submitting and amending instructions.\n3. Required instructions — validate the details before processing.\n4. Exceptions — follow the escalation procedure for failed or delayed settlements.\n5. Holidays — check the relevant business calendar for date adjustments.\n\nOpen the sources below to explore the sample documents. This is a demo answer, not verified operational guidance.', sources: demoSources(['policy', 'procedures', 'calendar']) }
+  if (/api|oauth|code|integrat/i.test(request.question)) return { answer: 'Start with the API Integration Guide to explore the integration workflow. A typical implementation authenticates through your application backend, sends the question and conversation context, and returns an answer with source references.\n\nThe frontend already has a dedicated service adapter for that handoff. Your backend can handle authentication and the Progress Agentic RAG connection.\n\nThis is a sample response; connect your knowledge service for answers grounded in your documentation.', sources: demoSources(['api', 'manual']) }
+  return { answer: `Here is a starting point for “${request.question}”.\n\nUse the knowledge library to explore product documentation and policies, or choose a specialist agent to narrow your question. You can open source references, ask a follow-up, and bookmark useful answers.\n\nThis workspace is currently in demo mode. Once connected, your knowledge service will generate a grounded answer here using your organization's documents.`, sources: demoSources(['manual']) }
  }
 
  const params = new URLSearchParams({
   rqDataMode: 'VAR/JSON',
-  rqAuthentication: sessionToken.value,
+  rqAuthentication: `Session:${sessionToken.value}`,
   rqService: 'ilDecision:ragAsk',
   pcQuery: request.question,
+  pcTitle: request.title,
  })
- const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal })
- // Mirror auth.ts: this backend family can return error details in the JSON body even on a
- // non-2xx status, so parse the body before deciding whether to give up on !response.ok.
- let data: { answer?: string; sourceIds?: string[]; rqErrorMessage?: string; error?: string; message?: string } | null = null
- try { data = await response.json() } catch { data = null }
- const errorMessage = typeof data?.rqErrorMessage === 'string' && data.rqErrorMessage ? data.rqErrorMessage
-  : typeof data?.error === 'string' && data.error ? data.error
-  : typeof data?.message === 'string' && data.message ? data.message
-  : undefined
- if (errorMessage) throw new Error(errorMessage)
- if (!response.ok) throw new Error('The knowledge service is unavailable. Please try again.')
- // TODO: map the real ragAsk response shape once it's confirmed. For now, surface whatever came back.
- return { answer: typeof data?.answer === 'string' ? data.answer : JSON.stringify(data, null, 2), sourceIds: Array.isArray(data?.sourceIds) ? data.sourceIds : [] }
+ const { context } = buildChatContext(request.history)
+ if (context) params.set('pcContext', context)
+ const timeout = withTimeout(signal, 45000)
+ try {
+  const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal: timeout.signal })
+  // Same backend family as auth.ts: error details come back in the JSON body (rqResponse.rqErrorMessage)
+  // even on a non-2xx status, so parse the body before deciding whether to give up on !response.ok.
+  let data: { rqResponse?: { rqErrorMessage?: string; opcResponse?: string; opcResources?: string; opcPageNumber?: string } } | null = null
+  try { data = await response.json() } catch { data = null }
+  const rq = data?.rqResponse ?? {}
+  if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
+  if (!response.ok) throw new Error('The knowledge service is unavailable. Please try again.')
+  if (typeof rq.opcResponse !== 'string') throw new Error('The knowledge service returned an invalid response.')
+
+  const names = typeof rq.opcResources === 'string' && rq.opcResources ? rq.opcResources.split(',').map(s => s.trim()).filter(Boolean) : []
+  const pages = typeof rq.opcPageNumber === 'string' ? rq.opcPageNumber.split(',').map(s => s.trim()) : []
+  const sources = names.map((name, index) => ({ name, page: pages[index] || '—' }))
+
+  return { answer: rq.opcResponse, sources }
+ } catch (e) {
+  if (e instanceof DOMException && e.name === 'AbortError') {
+   if (timeout.didTimeOut()) throw new Error('The knowledge service took too long to respond. Please try again.')
+   throw e
+  }
+  throw e
+ } finally {
+  timeout.cleanup()
+ }
 }
