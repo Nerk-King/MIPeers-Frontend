@@ -15,8 +15,11 @@ import { summarizeTitle } from './services/title'
 import { currentUserName, sessionToken, signOut } from './services/auth'
 import { isLive, toggleLive } from './services/liveMode'
 type Message = { id: string; role: 'user' | 'assistant'; content: string; sources: { name: string; page: string }[]; liked?: boolean; saved?: boolean }
-// datasetObj is only set for live-mode chats loaded from ilDecision:fetchRagHistory.
-type Conversation = { id: string; datasetObj?: number; title: string; date: string; agentId: string; messages: Message[] }
+// datasetObj is only set for live-mode chats loaded from ilDecision:fetchRagHistory. contextSince
+// marks where the current pcContext window starts counting from — once that window overflows the
+// budget it's cleared and this advances to the latest message, so context cycles through
+// fill-then-empty rather than permanently going silent for the rest of a long conversation.
+type Conversation = { id: string; datasetObj?: number; title: string; date: string; agentId: string; messages: Message[]; contextSince?: number }
 function read<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback } catch { return fallback } }
 function capitalize(value: string): string { return value ? value.charAt(0).toUpperCase() + value.slice(1) : value }
 // Conversations persisted before "sources" replaced "sourceIds" won't have that field — default it
