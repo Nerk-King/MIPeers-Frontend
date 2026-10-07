@@ -8,17 +8,15 @@ import UploadData from './components/UploadData.vue'
 import RagUpload from './components/RagUpload.vue'
 import Login from './Login.vue'
 import { agents, type KnowledgeDocument } from './data'
-import { libraryDocuments as documents, getKnowledgeTree } from './services/knowledge'
+import { libraryDocuments as documents, getKnowledgeTree, downloadKnowledgeDocument } from './services/knowledge'
 import { localResources, downloadResource, removeResource } from './services/uploads'
-import { askKnowledge, buildChatContext } from './services/rag'
+import { askKnowledge, buildChatContext, deleteRagHistory, fetchRagHistory } from './services/rag'
 import { summarizeTitle } from './services/title'
-import { currentUserName, signOut } from './services/auth'
+import { currentUserName, sessionToken, signOut } from './services/auth'
 import { isLive, toggleLive } from './services/liveMode'
 type Message = { id: string; role: 'user' | 'assistant'; content: string; sources: { name: string; page: string }[]; liked?: boolean; saved?: boolean }
-// contextSince marks where the current pcContext window starts counting from — once that window
-// overflows the budget it's cleared and this advances to the latest message, so context cycles
-// through fill-then-empty rather than permanently going silent for the rest of a long conversation.
-type Conversation = { id: string; title: string; date: string; agentId: string; messages: Message[]; contextSince?: number }
+// datasetObj is only set for live-mode chats loaded from ilDecision:fetchRagHistory.
+type Conversation = { id: string; datasetObj?: number; title: string; date: string; agentId: string; messages: Message[] }
 function read<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback } catch { return fallback } }
 function capitalize(value: string): string { return value ? value.charAt(0).toUpperCase() + value.slice(1) : value }
 // Conversations persisted before "sources" replaced "sourceIds" won't have that field — default it
@@ -28,7 +26,11 @@ function normalizeConversations(raw: Conversation[]): Conversation[] {
 }
 const route = useRoute(), router = useRouter()
 const nav = [{ path: '/home', name: 'Home', icon: 'Home' }, { path: '/chat', name: 'Chat', icon: 'LayoutDashboard' }, { path: '/agents', name: 'AI Agents', icon: 'Bot' }, { path: '/library', name: 'Knowledge Library', icon: 'Folder' }, { path: '/history', name: 'History', icon: 'Clock3' }, { path: '/bookmarks', name: 'Bookmarks', icon: 'Bookmark' }]
-const conversations = ref<Conversation[]>(normalizeConversations(read('mipeers-conversations', [])))
+// Demo mode keeps chats in localStorage; live mode loads them from ilDecision:fetchRagHistory (see loadHistory).
+const conversations = ref<Conversation[]>(isLive.value ? [] : normalizeConversations(read('mipeers-conversations', [])))
+// Likes/bookmarks aren't part of the server history, so in live mode they're kept locally, keyed by message id.
+type MessageFlags = Record<string, { liked?: boolean; saved?: boolean }>
+let remoteHistoryLoaded = false
 type Preferences = { name: string; showSources: boolean; compact: boolean; theme: 'dark' | 'light'; uploadsPath: string }
 const defaults: Preferences = { name: 'Admin', showSources: true, compact: false, theme: 'dark', uploadsPath: '' }
 const preferences = ref<Preferences>({ ...defaults, ...read<Partial<Preferences>>('mipeers-preferences', {}) })
@@ -52,14 +54,70 @@ const results = computed(() => documents.value.filter(d => `${d.name} ${d.catego
 const saved = computed(() => conversations.value.flatMap(c => c.messages.filter(m => m.saved).map(m => ({ ...m, conversation: c }))))
 const historyResults = computed(() => conversations.value.filter(c => c.title.toLowerCase().includes(search.value.toLowerCase())))
 const suggestions = [{ icon: 'MessageCircle', color: 'purple', label: 'Explore our product', text: 'What are the key features of our product?' }, { icon: 'Code2', color: 'green', label: 'Build an integration', text: 'How do I integrate the API with OAuth?' }, { icon: 'Clock3', color: 'orange', label: 'Understand settlement', text: 'What are the current settlement rules?' }, { icon: 'Shield', color: 'blue', label: 'Find a policy', text: 'What are our data retention policies?' }]
-watch(conversations, value => { try { localStorage.setItem('mipeers-conversations', JSON.stringify(value)) } catch { notify('Browser storage is full. Changes will last for this session.') } }, { deep: true })
+watch(conversations, value => {
+ try {
+  if (!isLive.value) { localStorage.setItem('mipeers-conversations', JSON.stringify(value)); return }
+  // Until the history has loaded, an empty list would look like every flag was cleared.
+  if (!remoteHistoryLoaded) return
+  const flags = read<MessageFlags>('mipeers-message-flags', {})
+  for (const m of value.flatMap(c => c.messages)) {
+   if (m.liked || m.saved) flags[m.id] = { liked: m.liked, saved: m.saved }
+   else delete flags[m.id]
+  }
+  localStorage.setItem('mipeers-message-flags', JSON.stringify(flags))
+ } catch { notify('Browser storage is full. Changes will last for this session.') }
+}, { deep: true })
+let historyRequest = 0
+async function loadHistory() {
+ const request = ++historyRequest
+ remoteHistoryLoaded = false
+ if (!isLive.value) { conversations.value = normalizeConversations(read('mipeers-conversations', [])); return }
+ conversations.value = []
+ if (!sessionToken.value) return
+ try {
+  const history = await fetchRagHistory()
+  if (request !== historyRequest) return
+  const flags = read<MessageFlags>('mipeers-message-flags', {})
+  conversations.value = history.map(c => ({ ...c, agentId: 'general', messages: c.messages.map(m => ({ ...m, ...flags[m.id] })) }))
+  remoteHistoryLoaded = true
+  if (!current.value) currentId.value = ''
+ } catch (e) {
+  if (request === historyRequest) notify(e instanceof Error ? e.message : 'Unable to load chat history.')
+ }
+}
+watch([isLive, sessionToken], loadHistory)
+const deletingId = ref('')
+async function deleteConversation(c: Conversation) {
+ if (isLive.value) {
+  deletingId.value = c.id
+  try {
+   // A chat started this session has no DatasetObj yet — look it up by title (what ragAsk saved it under).
+   const datasetObj = c.datasetObj ?? (await fetchRagHistory()).find(h => h.title === c.title)?.datasetObj
+   if (datasetObj === undefined) throw new Error('This conversation has not been saved yet, so it cannot be deleted.')
+   await deleteRagHistory(datasetObj)
+  } catch (e) {
+   notify(e instanceof Error ? e.message : 'Unable to delete this conversation.')
+   return
+  } finally {
+   deletingId.value = ''
+  }
+ }
+ conversations.value = conversations.value.filter(item => item.id !== c.id)
+ if (currentId.value === c.id) currentId.value = ''
+ notify('Conversation deleted')
+}
 watch(preferences, value => { try { localStorage.setItem('mipeers-preferences', JSON.stringify(value)) } catch { notify('Unable to save preferences on this device.') } }, { deep: true })
 // Home is always a fresh start — never resume whatever conversation was last open.
 watch(() => route.path, path => { search.value = ''; mobileNav.value = false; notifications.value = false; if (path === '/home') { controller?.abort(); currentId.value = '' } })
 watch(() => current.value?.messages.length, async () => { await nextTick(); messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: 'smooth' }) })
 function notify(text: string) { toast.value = text; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.value = '', 3200) }
-onMounted(() => { getKnowledgeTree().catch(() => notify('Unable to load the library. Open Knowledge Library to try again.')) })
+onMounted(() => { getKnowledgeTree().catch(() => notify('Unable to load the library. Open Knowledge Library to try again.')); loadHistory() })
 function closeUpload() { if (!uploadBusy.value) uploadOpen.value = false }
+const downloadPending = ref(false)
+async function downloadRemote(doc: KnowledgeDocument) {
+ downloadPending.value = true
+ try { await downloadKnowledgeDocument(doc) } catch (e) { notify(e instanceof Error ? e.message : 'Download failed.') } finally { downloadPending.value = false }
+}
 function downloadSelected() { try { if (selectedLocal.value) downloadResource(selectedLocal.value.id) } catch (e) { notify(e instanceof Error ? e.message : 'Download failed.') } }
 async function deleteSelected() {
  if (!selectedLocal.value || removePending.value) return
@@ -153,7 +211,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', escape); controlle
    <section v-else class="content-page"><div class="content-heading"><div><span class="eyebrow">YOUR WORKSPACE</span><h1>{{ page }}</h1><p>{{ route.path === '/agents' ? 'The right expertise for your next question.' : route.path === '/library' ? 'Explore the knowledge behind every answer.' : route.path === '/history' ? 'Pick up where you left off.' : route.path === '/bookmarks' ? 'Useful answers, right where you need them.' : 'Make this workspace yours.' }}</p></div><div v-if="route.path === '/library'" class="content-heading-actions"><button class="primary-button" @click="ragUploadOpen = true"><Icon name="ArrowUp" :size="18"/>Send to knowledge base</button><button class="outline-button" @click="uploadOpen = true"><Icon name="Plus" :size="18"/>Save to local</button></div><button v-if="route.path === '/history'" class="primary-button" :disabled="pending" @click="newChat"><Icon name="Plus" :size="18"/>New conversation</button></div>
     <div v-if="route.path === '/agents'" class="agent-cards"><article v-for="a in agents" :key="a.id" class="agent-card"><span class="pet-portrait"><AgentAvatar :color="a.color" :icon="a.icon" :size="112"/></span><span class="badge" v-if="a.id === 'general'">Default agent</span><h2>{{ a.name }}</h2><p>{{ a.description }}</p><div class="tags"><span v-for="tag in a.tags" :key="tag">{{ tag }}</span></div><button class="outline-button" :disabled="pending" @click="chooseAgent(a.id); newChat()">Start conversation<Icon name="ArrowUpRight" :size="18"/></button></article></div>
     <template v-if="route.path === '/library'"><div class="library-toolbar"><span><strong>{{ documents.length }}</strong> documents <span class="subtle">· {{ demoMode ? 'Sample library + local uploads' : 'Connected library + local uploads' }}</span></span><div class="filter-search"><Icon name="Search" :size="17"/><input v-model="search" aria-label="Filter documents" placeholder="Find a document…"/></div></div><div v-if="search" class="document-list"><button v-for="doc in results" :key="doc.id" @click="selectedDoc = doc"><span class="document-icon"><Icon name="FileText"/></span><span><strong>{{ doc.name }}</strong><small>{{ doc.category }} / {{ doc.folder }}</small></span><span class="document-date">{{ doc.date }}</span><Icon name="ArrowUpRight" :size="18"/></button><div v-if="!results.length" class="empty-state"><Icon name="Search" :size="30"/><h2>No matching documents</h2><p>Try a different name or category.</p></div></div><div v-else class="library-tree-panel"><KnowledgeTree :active="lastAnswer?.sources.map(s => s.name)" @open="selectedDoc = $event"/></div></template>
-    <template v-if="route.path === '/history'"><div class="filter-search history-search"><Icon name="Search" :size="17"/><input v-model="search" aria-label="Search conversations" placeholder="Search conversations…"/></div><div class="history-list"><article v-for="c in historyResults" :key="c.id"><button class="history-open" :disabled="pending" @click="openConversation(c)"><span class="document-icon"><Icon name="MessageCircle"/></span><span><strong>{{ c.title }}</strong><small>{{ new Date(c.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) }} · {{ c.messages.length }} messages</small></span><Icon name="ChevronRight" :size="18"/></button><button class="icon-button" :disabled="pending" aria-label="Delete conversation" @click="conversations = conversations.filter(item => item.id !== c.id); notify('Conversation deleted')"><Icon name="Trash2" :size="17"/></button></article></div><div v-if="!historyResults.length" class="empty-state"><Icon name="Clock3" :size="34"/><h2>{{ search ? 'No matching conversations' : 'A fresh start' }}</h2><p>Your conversations will appear here after you ask a question.</p><button class="primary-button" @click="newChat">Ask your first question<Icon name="ArrowUpRight" :size="18"/></button></div></template>
+    <template v-if="route.path === '/history'"><div class="filter-search history-search"><Icon name="Search" :size="17"/><input v-model="search" aria-label="Search conversations" placeholder="Search conversations…"/></div><div class="history-list"><article v-for="c in historyResults" :key="c.id"><button class="history-open" :disabled="pending" @click="openConversation(c)"><span class="document-icon"><Icon name="MessageCircle"/></span><span><strong>{{ c.title }}</strong><small>{{ new Date(c.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) }} · {{ c.messages.length }} messages</small></span><Icon name="ChevronRight" :size="18"/></button><button class="icon-button" :disabled="pending || deletingId === c.id" aria-label="Delete conversation" @click="deleteConversation(c)"><Icon name="Trash2" :size="17"/></button></article></div><div v-if="!historyResults.length" class="empty-state"><Icon name="Clock3" :size="34"/><h2>{{ search ? 'No matching conversations' : 'A fresh start' }}</h2><p>Your conversations will appear here after you ask a question.</p><button class="primary-button" @click="newChat">Ask your first question<Icon name="ArrowUpRight" :size="18"/></button></div></template>
     <template v-if="route.path === '/bookmarks'"><div class="bookmark-grid"><article v-for="m in saved" :key="m.id" class="bookmark-card"><div><span class="eyebrow">SAVED ANSWER</span><button class="icon-button" aria-label="Remove bookmark" @click="m.conversation.messages.find(item => item.id === m.id)!.saved = false"><Icon name="Bookmark" :size="18"/></button></div><h2>{{ m.conversation.title }}</h2><p>{{ m.content.slice(0, 230) }}…</p><button class="text-button" :disabled="pending" @click="openConversation(m.conversation)">Open conversation<Icon name="ArrowUpRight" :size="17"/></button></article></div><div v-if="!saved.length" class="empty-state"><Icon name="Bookmark" :size="34"/><h2>Keep the answers that matter</h2><p>Use the bookmark icon under an answer to save it here.</p><button class="outline-button" @click="router.push('/chat')">Go to dashboard<Icon name="ArrowUpRight" :size="17"/></button></div></template>
     <div v-if="route.path === '/settings'" class="settings-panel"><h3>Profile</h3><label class="setting-row"><span>Display name<small>How you appear in this workspace</small></span><input v-model="preferences.name" maxlength="32" placeholder="Admin" aria-label="Display name"/></label><div class="setting-row"><span>Session<small>Signed in to this workspace</small></span><button class="outline-button" @click="logOut">Sign out</button></div><h3>Appearance</h3><label class="setting-row"><span>Light mode<small>Use a bright theme for your workspace</small></span><input type="checkbox" role="switch" aria-label="Light mode" v-model="preferences.theme" true-value="light" false-value="dark"/></label><h3>Workspace preferences</h3><label class="setting-row"><span>Knowledge sources<small>Show the source panel beside your conversation</small></span><input type="checkbox" role="switch" v-model="preferences.showSources"/></label><label class="setting-row"><span>Compact navigation<small>Give your content a little more room</small></span><input type="checkbox" role="switch" v-model="preferences.compact"/></label><h3>Knowledge uploads</h3><label class="setting-row"><span>Local uploads folder<small>Files are saved here before being sent to the knowledge base</small></span><input v-model="preferences.uploadsPath" placeholder="I:\path\to\uploads" aria-label="Local uploads folder path"/></label><h3>About this workspace</h3><div class="setting-row"><span>Knowledge service<small>{{ demoMode ? 'Sample answers and documents are enabled' : 'Using your configured knowledge endpoint' }}</small></span><span class="badge">{{ demoMode ? 'Demo mode' : 'Configured' }}</span></div><div class="setting-row"><span>Upload service<small>{{ demoMode ? 'Uploads are simulated, nothing is sent' : 'Using your configured upload endpoint' }}</small></span><span class="badge">{{ demoMode ? 'Demo mode' : 'Configured' }}</span></div><p class="settings-note">Preferences and conversation history are saved in this browser.</p></div>
    </section>
@@ -165,7 +223,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', escape); controlle
    </section>
   </div>
   <RagUpload v-if="ragUploadOpen" :uploads-path="preferences.uploadsPath" @close="ragUploadOpen = false" @open-settings="ragUploadOpen = false; router.push('/settings')" @uploaded="count => notify(count + (count === 1 ? ' file sent to the knowledge base.' : ' files sent to the knowledge base.'))"/>
-  <div v-if="drawer || selectedDoc || agentDetails" class="overlay" @click.self="drawer = false; selectedDoc = null; agentDetails = false"><section role="dialog" aria-modal="true" :aria-label="selectedDoc ? selectedDoc.name : agentDetails ? 'Agent details' : 'Knowledge library'" :class="['drawer', { 'document-drawer': selectedDoc }]"><div class="drawer-heading"><div><span class="eyebrow">{{ selectedDoc ? 'DOCUMENT PREVIEW' : agentDetails ? 'YOUR AI SPECIALIST' : 'EXPLORE YOUR KNOWLEDGE' }}</span><h2>{{ selectedDoc ? selectedDoc.name : agentDetails ? 'AI Agent' : 'Knowledge Library' }}</h2></div><button class="icon-button" autofocus aria-label="Close panel" @click="selectedDoc ? selectedDoc = null : agentDetails ? agentDetails = false : drawer = false"><Icon name="X"/></button></div><template v-if="selectedDoc"><span class="demo-document-label">{{ selectedLocal ? 'Local resource · Saved in this browser' : demoMode ? 'Sample document · Preview only' : 'Knowledge document' }}</span><p class="subtle">{{ selectedDoc.category }} / {{ selectedDoc.folder }}</p><article class="document-preview"><Icon name="FileText" :size="32"/><h2>{{ selectedDoc.name }}</h2><p>{{ selectedDoc.content }}</p></article><div v-if="selectedLocal" class="local-resource-actions"><p class="subtle">Saved locally. This resource is not indexed for AI answers.</p><div><button class="outline-button" @click="downloadSelected">Download{{ selectedLocal.file ? ' original' : ' resource' }}</button><a v-if="selectedLocal.url" class="outline-button" :href="selectedLocal.url" target="_blank" rel="noopener noreferrer">Open link<Icon name="ArrowUpRight" :size="16"/></a><button class="outline-button" :disabled="removePending" @click="deleteSelected"><Icon name="Trash2" :size="16"/>{{ removePending ? 'Removing…' : 'Remove resource' }}</button></div></div><div v-else class="document-actions"><a v-if="selectedDoc.downloadLink" class="outline-button" :href="selectedDoc.downloadLink" target="_blank" rel="noopener noreferrer"><Icon name="ArrowUpRight" :size="16"/>Download file</a><button class="primary-button" :disabled="pending" @click="send('Tell me about ' + selectedDoc.name); selectedDoc = null; drawer = false">Ask about this document<Icon name="ArrowUpRight" :size="17"/></button></div></template><template v-else-if="agentDetails"><span :class="['large-orb', agent.color]"><AgentAvatar :color="agent.color" :icon="agent.icon" :size="30"/></span><h2>{{ agent.name }}</h2><p>{{ agent.description }}</p><h3>Knowledge scope</h3><div class="tags"><span v-for="tag in agent.tags" :key="tag">{{ tag }}</span></div><p class="subtle">Answers include source references so you can review the supporting documents.</p></template><template v-else><p class="subtle">{{ documents.length }} documents across your knowledge folders</p><KnowledgeTree :active="lastAnswer?.sources.map(s => s.name)" @open="selectedDoc = $event"/></template></section></div>
+  <div v-if="drawer || selectedDoc || agentDetails" class="overlay" @click.self="drawer = false; selectedDoc = null; agentDetails = false"><section role="dialog" aria-modal="true" :aria-label="selectedDoc ? selectedDoc.name : agentDetails ? 'Agent details' : 'Knowledge library'" :class="['drawer', { 'document-drawer': selectedDoc }]"><div class="drawer-heading"><div><span class="eyebrow">{{ selectedDoc ? 'DOCUMENT PREVIEW' : agentDetails ? 'YOUR AI SPECIALIST' : 'EXPLORE YOUR KNOWLEDGE' }}</span><h2>{{ selectedDoc ? selectedDoc.name : agentDetails ? 'AI Agent' : 'Knowledge Library' }}</h2></div><button class="icon-button" autofocus aria-label="Close panel" @click="selectedDoc ? selectedDoc = null : agentDetails ? agentDetails = false : drawer = false"><Icon name="X"/></button></div><template v-if="selectedDoc"><span class="demo-document-label">{{ selectedLocal ? 'Local resource · Saved in this browser' : demoMode ? 'Sample document · Preview only' : 'Knowledge document' }}</span><p class="subtle">{{ selectedDoc.category }} / {{ selectedDoc.folder }}</p><article class="document-preview"><Icon name="FileText" :size="32"/><h2>{{ selectedDoc.name }}</h2><p>{{ selectedDoc.content }}</p></article><div v-if="selectedLocal" class="local-resource-actions"><p class="subtle">Saved locally. This resource is not indexed for AI answers.</p><div><button class="outline-button" @click="downloadSelected">Download{{ selectedLocal.file ? ' original' : ' resource' }}</button><a v-if="selectedLocal.url" class="outline-button" :href="selectedLocal.url" target="_blank" rel="noopener noreferrer">Open link<Icon name="ArrowUpRight" :size="16"/></a><button class="outline-button" :disabled="removePending" @click="deleteSelected"><Icon name="Trash2" :size="16"/>{{ removePending ? 'Removing…' : 'Remove resource' }}</button></div></div><div v-else class="document-actions"><button v-if="selectedDoc.downloadLink" class="outline-button" :disabled="downloadPending" @click="downloadRemote(selectedDoc)"><Icon name="ArrowUpRight" :size="16"/>{{ downloadPending ? 'Downloading…' : 'Download file' }}</button><button class="primary-button" :disabled="pending" @click="send('Tell me about ' + selectedDoc.name); selectedDoc = null; drawer = false">Ask about this document<Icon name="ArrowUpRight" :size="17"/></button></div></template><template v-else-if="agentDetails"><span :class="['large-orb', agent.color]"><AgentAvatar :color="agent.color" :icon="agent.icon" :size="30"/></span><h2>{{ agent.name }}</h2><p>{{ agent.description }}</p><h3>Knowledge scope</h3><div class="tags"><span v-for="tag in agent.tags" :key="tag">{{ tag }}</span></div><p class="subtle">Answers include source references so you can review the supporting documents.</p></template><template v-else><p class="subtle">{{ documents.length }} documents across your knowledge folders</p><KnowledgeTree :active="lastAnswer?.sources.map(s => s.name)" @open="selectedDoc = $event"/></template></section></div>
   <div v-if="toast" class="toast" role="status"><Icon name="Check" :size="18"/>{{ toast }}</div>
  </div>
 </template>

@@ -2,6 +2,7 @@ import { sessionToken } from './auth'
 import { documents } from '../data'
 import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
+import { summarizeTitle } from './title'
 
 export interface RagRequest { question: string; agentId: string; title: string; context: string }
 export interface RagSource { name: string; page: string }
@@ -94,6 +95,97 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
    if (timeout.didTimeOut()) throw new Error('The knowledge service took too long to respond. Please try again.')
    throw e
   }
+  throw e
+ } finally {
+  timeout.cleanup()
+ }
+}
+
+export interface RagHistoryMessage { id: string; role: 'user' | 'assistant'; content: string; sources: RagSource[] }
+export interface RagHistoryConversation { id: string; datasetObj?: number; title: string; date: string; messages: RagHistoryMessage[] }
+
+interface RagHistoryDataset { DatasetObj?: number; DatasetDescription?: string; DatasetContents?: string; DatasetCreatedDatetime?: string | null; LastModifiedDatetime?: string | null }
+
+// Some saved values arrive wrapped in an extra pair of quotes (e.g. "\"test\"", or "\"\"" for empty).
+function unquote(value: unknown): string {
+ const text = typeof value === 'string' ? value.trim() : ''
+ return text.length >= 2 && text.startsWith('"') && text.endsWith('"') ? text.slice(1, -1).trim() : text
+}
+
+/**
+ * Calls ilDecision:fetchRagHistory for the signed-in user's saved chats. Each ttChatHistory entry is
+ * one conversation: DatasetDescription is its title (the pcTitle ragAsk was sent with) and
+ * DatasetContents is a JSON-encoded string of [{query, response, resource}] turns, where resource is
+ * a comma-delimited list of source file names. Ids are derived from DatasetObj so they stay stable
+ * across reloads. Newest conversation first.
+ */
+export async function fetchRagHistory(signal?: AbortSignal): Promise<RagHistoryConversation[]> {
+ const params = new URLSearchParams({
+  rqDataMode: 'VAR/JSON',
+  rqAuthentication: `Session:${sessionToken.value}`,
+  rqService: 'ilDecision:fetchRagHistory',
+ })
+ const timeout = withTimeout(signal, 45000)
+ try {
+  const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal: timeout.signal })
+  let data: { rqResponse?: { rqErrorMessage?: string; ttChatHistory?: RagHistoryDataset[] } } | null = null
+  try { data = await response.json() } catch { data = null }
+  const rq = data?.rqResponse ?? {}
+  if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
+  if (!response.ok) throw new Error('The chat history service is unavailable. Please try again.')
+  if (!data?.rqResponse) throw new Error('The chat history service returned an invalid response.')
+  // An empty temp-table can come back as a missing field rather than [].
+  const datasets = Array.isArray(rq.ttChatHistory) ? rq.ttChatHistory : []
+
+  const conversations: RagHistoryConversation[] = []
+  for (const [index, dataset] of datasets.entries()) {
+   let turns: unknown
+   try { turns = JSON.parse(dataset.DatasetContents || '[]') } catch { continue }
+   if (!Array.isArray(turns)) continue
+   const id = 'ils-' + (dataset.DatasetObj ?? index)
+   const messages: RagHistoryMessage[] = []
+   for (const [turnIndex, turn] of turns.entries()) {
+    const { query, response: answer, resource } = (turn ?? {}) as { query?: unknown; response?: unknown; resource?: unknown }
+    const sources = unquote(resource).split(',').map(name => name.trim()).filter(Boolean).map(name => ({ name, page: '—' }))
+    messages.push({ id: `${id}-${turnIndex}-q`, role: 'user', content: unquote(query), sources: [] })
+    messages.push({ id: `${id}-${turnIndex}-a`, role: 'assistant', content: unquote(answer), sources })
+   }
+   const firstQuestion = messages[0]?.content || ''
+   conversations.push({
+    id,
+    datasetObj: typeof dataset.DatasetObj === 'number' ? dataset.DatasetObj : undefined,
+    title: unquote(dataset.DatasetDescription) || summarizeTitle(firstQuestion) || 'Untitled chat',
+    date: dataset.LastModifiedDatetime || dataset.DatasetCreatedDatetime || new Date().toISOString(),
+    messages,
+   })
+  }
+  return conversations.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+ } catch (e) {
+  if (e instanceof DOMException && e.name === 'AbortError' && timeout.didTimeOut()) throw new Error('The chat history service took too long to respond. Please try again.')
+  throw e
+ } finally {
+  timeout.cleanup()
+ }
+}
+
+/** Calls ilDecision:deleteRagHistory to delete one saved conversation, identified by the DatasetObj from fetchRagHistory. */
+export async function deleteRagHistory(datasetObj: number, signal?: AbortSignal): Promise<void> {
+ const params = new URLSearchParams({
+  rqDataMode: 'VAR/JSON',
+  rqAuthentication: `Session:${sessionToken.value}`,
+  rqService: 'ilDecision:deleteRagHistory',
+  ipdDatasetObj: String(datasetObj),
+ })
+ const timeout = withTimeout(signal, 45000)
+ try {
+  const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal: timeout.signal })
+  let data: { rqResponse?: { rqErrorMessage?: string } } | null = null
+  try { data = await response.json() } catch { data = null }
+  const rq = data?.rqResponse ?? {}
+  if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
+  if (!response.ok) throw new Error('Unable to delete this conversation. Please try again.')
+ } catch (e) {
+  if (e instanceof DOMException && e.name === 'AbortError' && timeout.didTimeOut()) throw new Error('The chat history service took too long to respond. Please try again.')
   throw e
  } finally {
   timeout.cleanup()
