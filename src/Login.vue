@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next'
 import heroImage from './Mipeers logo.jpg'
 import { signIn } from './services/auth'
+import { isLive, toggleLive } from './services/liveMode'
 import AgentAvatar from './components/AgentAvatar.vue'
 const router = useRouter()
 const username = ref('')
@@ -29,6 +30,7 @@ function dismissError() { error.value = '' }
 
 <template>
  <div class="login-page">
+  <button :class="['live-toggle', 'login-live-toggle', { live: isLive }]" :aria-pressed="isLive" @click="toggleLive"><span class="live-toggle-dot"/>{{ isLive ? 'Live' : 'Demo' }}</button>
   <section class="login-panel">
    <div class="login-brand">
     <span class="login-logo">MiP<span class="login-dot">.</span></span>
@@ -58,6 +60,7 @@ function dismissError() { error.value = '' }
 
 <style scoped>
 .login-page { display: flex; min-height: 100vh; width: 100%; background: #070e1b; }
+.login-live-toggle { position: absolute; top: 24px; right: 24px; z-index: 10; }
 
 /* left panel */
 .login-panel { flex: 0 0 clamp(380px, 32vw, 505px); display: flex; flex-direction: column; padding: 9vh 6vw 5vh; background: linear-gradient(155deg, #0b1527, #081321 70%); border-right: 1px solid var(--line); }

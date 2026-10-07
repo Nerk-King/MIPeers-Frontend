@@ -38,6 +38,7 @@ export default defineConfig(({ mode }) => {
  const env = loadEnv(mode, '.', '')
  const proxy = { ...ilsProxy, ...ragProxy(env) }
  return {
+  base: '/mipeers/',
   plugins: [vue()],
   server: { proxy },
   preview: { proxy },

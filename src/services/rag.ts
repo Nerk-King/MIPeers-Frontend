@@ -9,30 +9,29 @@ export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
 export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number; truncated: boolean }
 
-// Budget for pcContext specifically, measured as URL-encoded length (not raw JSON length) since
-// that's what actually determines request-line size. Tuned down from 3000 -> 1500 -> 750 (too
-// tight, reset almost every turn) -> 1250. TODO: pcContext is a query param only because ragAsk's
-// contract was already built that way (GET + query string) — moving context into the request body
-// would remove this size constraint entirely, but that's a backend contract change, not something
-// this adapter can do alone.
+// Budget for pcContext. Originally sized against URL query-string length (ragAsk was GET + query
+// params), tuned down from 3000 -> 1500 -> 750 (too tight, reset almost every turn) -> 1250. ragAsk
+// now sends everything as a JSON body instead, which removes the URL-length reason for a cap — this
+// is kept anyway as a sane upper bound on how much conversation history gets replayed per call.
 export const CONTEXT_CHAR_LIMIT = 1250
 
 /**
  * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext. Unlike a
  * sliding window, this doesn't drop the oldest turns one at a time — once the full history no
  * longer fits within limitChars, the whole context is cleared (the model starts fresh from that
- * point) rather than sending a partially-trimmed window. Exported so the UI can show the same
+ * point) rather than sending a partially-trimmed window. Measured as plain string length now that
+ * pcContext travels in a JSON body rather than a URL. Exported so the UI can show the same
  * usage/limit the request will actually use.
  */
 export function buildChatContext(history: { role: string; content: string }[], limitChars = CONTEXT_CHAR_LIMIT): ChatContext {
  const entries = history.map(m => ({ author: m.role === 'user' ? 'USER' : 'NUCLIA', text: m.content }))
  let context = entries.length ? JSON.stringify(entries) : ''
  let truncated = false
- if (encodeURIComponent(context).length > limitChars) {
+ if (context.length > limitChars) {
   context = ''
   truncated = true
  }
- const usedChars = encodeURIComponent(context).length
+ const usedChars = context.length
  return { context, usedChars, limitChars, percent: Math.min(100, Math.round((usedChars / limitChars) * 100)), truncated }
 }
 
@@ -52,7 +51,9 @@ function demoSources(ids: string[]): RagSource[] {
  * login response itself echoes back). pcTitle carries the chat's own title. request.context is the
  * already-built pcContext value (see buildChatContext) — the caller owns deciding which slice of
  * history it represents, since resetting it once it overflows is a stateful, per-conversation
- * decision this function has no way to track on its own. On success the service returns:
+ * decision this function has no way to track on its own. Sent as a JSON body (same rq- and pc-
+ * prefixed field names as every other call here, just POSTed instead of put on the query string) so
+ * pcContext isn't bound by URL length. On success the service returns:
  * { rqResponse: { opcResponse, opcResources, opcPageNumber } } — opcResponse is the answer text;
  * opcResources/opcPageNumber are comma-delimited lists, position-aligned with each other.
  */
@@ -65,17 +66,17 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   return { answer: `Here is a starting point for “${request.question}”.\n\nUse the knowledge library to explore product documentation and policies, or choose a specialist agent to narrow your question. You can open source references, ask a follow-up, and bookmark useful answers.\n\nThis workspace is currently in demo mode. Once connected, your knowledge service will generate a grounded answer here using your organization's documents.`, sources: demoSources(['manual']) }
  }
 
- const params = new URLSearchParams({
+ const body = {
   rqDataMode: 'VAR/JSON',
   rqAuthentication: `Session:${sessionToken.value}`,
   rqService: 'ilDecision:ragAsk',
   pcQuery: request.question,
   pcTitle: request.title,
- })
- if (request.context) params.set('pcContext', request.context)
+  pcContext: request.context,
+ }
  const timeout = withTimeout(signal, 45000)
  try {
-  const response = await fetch(`${RAG_ENDPOINT}?${params.toString()}`, { signal: timeout.signal })
+  const response = await fetch(RAG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout.signal })
   // Same backend family as auth.ts: error details come back in the JSON body (rqResponse.rqErrorMessage)
   // even on a non-2xx status, so parse the body before deciding whether to give up on !response.ok.
   let data: { rqResponse?: { rqErrorMessage?: string; opcResponse?: string; opcResources?: string; opcPageNumber?: string } } | null = null
