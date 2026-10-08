@@ -74,3 +74,7 @@
 :root[data-theme="light"] .login-field input { color: #202d45; }
 :root[data-theme="light"] .login-field input::placeholder { color: #53647d; }
 :root[data-theme="light"] .login-forgot:hover { color: #5e39a6; }
+:root[data-theme="light"] .login-error-overlay { background: #2a3a5440; }
+:root[data-theme="light"] .login-error-modal { background: linear-gradient(155deg, #fff, #f3f0fc 70%); border-color: var(--line); box-shadow: 0 20px 60px #243b6526; }
+:root[data-theme="light"] .login-error-modal h3 { color: var(--light-text); }
+:root[data-theme="light"] .login-error-modal p { color: var(--light-secondary); }

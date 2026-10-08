@@ -30,9 +30,9 @@ function dismissError() { error.value = '' }
 
 <template>
  <div class="login-page">
-  <button :class="['live-toggle', 'login-live-toggle', { live: isLive }]" :aria-pressed="isLive" @click="toggleLive"><span class="live-toggle-dot"/>{{ isLive ? 'Live' : 'Demo' }}</button>
   <section class="login-panel">
    <div class="login-brand">
+    <button :class="['live-toggle', 'login-live-toggle', { live: isLive }]" :aria-pressed="isLive" @click="toggleLive"><span class="live-toggle-dot"/>{{ isLive ? 'Live' : 'Demo' }}</button>
     <span class="login-logo">MiP<span class="login-dot">.</span></span>
     <span class="login-caption">HUMAN SOFTWARE COMPANY</span>
    </div>
@@ -60,7 +60,7 @@ function dismissError() { error.value = '' }
 
 <style scoped>
 .login-page { display: flex; min-height: 100vh; width: 100%; background: #070e1b; }
-.login-live-toggle { position: absolute; top: 24px; right: 24px; z-index: 10; font-size: 13px; padding: 9px 18px 9px 14px; background: #13203a; border-color: #3a3060; }
+.login-live-toggle { align-self: flex-start; margin-bottom: 18px; font-size: 13px; padding: 9px 18px 9px 14px; background: #13203a; border-color: #3a3060; }
 .login-live-toggle .live-toggle-dot { width: 9px; height: 9px; }
 .login-live-toggle.live { background: #0f2a1f; }
 

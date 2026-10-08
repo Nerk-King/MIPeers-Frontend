@@ -1,7 +1,8 @@
+// filter is sent to ragAsk as pcFilter, so the agent narrows which resources it draws on.
 export const agents = [
- { id: 'general', name: 'FlowMate', short: 'Productivity', description: 'Your everyday productivity partner — quick answers, summaries, and next steps across your whole workspace.', tags: ['Productivity', 'All-around'], color: 'purple', icon: 'Zap' },
- { id: 'settlement', name: 'BizWise', short: 'Business & operations', description: 'Your business specialist for settlement policies, clearing procedures, and operational calendars.', tags: ['Business', 'Operations'], color: 'blue', icon: 'Briefcase' },
- { id: 'product', name: 'DevMate', short: 'Developer', description: 'Your developer companion for API integration, product features, and technical documentation.', tags: ['Developer', 'Technical'], color: 'green', icon: 'Code2' }
+ { id: 'general', name: 'FlowMate', short: 'Productivity', description: 'Your everyday productivity partner — quick answers, summaries, and next steps across your whole workspace.', tags: ['Productivity', 'All-around'], color: 'purple', icon: 'Zap', filter: '' },
+ { id: 'settlement', name: 'BizWise', short: 'Business & operations', description: 'Your business specialist for settlement policies, clearing procedures, and operational calendars.', tags: ['Business', 'Operations'], color: 'blue', icon: 'Briefcase', filter: 'Business' },
+ { id: 'product', name: 'DevMate', short: 'Developer', description: 'Your developer companion for API integration, product features, and technical documentation.', tags: ['Developer', 'Technical'], color: 'green', icon: 'Code2', filter: 'Dev' }
 ]
 export interface KnowledgeDocument {
  id: string; name: string; category: string; folder: string; pages: string; date: string; content: string

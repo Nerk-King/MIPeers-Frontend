@@ -4,13 +4,30 @@ import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
 import { summarizeTitle } from './title'
 
-export interface RagRequest { question: string; agentId: string; title: string; context: string }
+export interface RagRequest { question: string; agentId: string; title: string; context: string; filter: string; maxResults: number }
 export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
-/** Serializes the full prior conversation as the JSON string expected by pcContext. */
-export function buildChatContext(history: { role: string; content: string }[]): string {
+export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number }
+
+// Display-only scale for the context meter in the UI (see App.vue's contextUsage) — the full
+// conversation history is always sent as pcContext regardless of size, this just marks the point
+// at which the meter turns amber as a heads-up that a lot of history is being replayed per call.
+export const CONTEXT_CHAR_LIMIT = 10000
+
+/** Default for piTopResult (max resources ragAsk returns) — overridable per user in Settings. */
+export const DEFAULT_MAX_RESULTS = 5
+
+/**
+ * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext. Always
+ * includes the full history passed in — no truncation or resetting. Measured as plain string
+ * length now that pcContext travels in a JSON body rather than a URL. Exported so the UI can show
+ * the same usage the request actually sends.
+ */
+export function buildChatContext(history: { role: string; content: string }[], limitChars = CONTEXT_CHAR_LIMIT): ChatContext {
  const entries = history.map(m => ({ author: m.role === 'user' ? 'USER' : 'NUCLIA', text: m.content }))
- return entries.length ? JSON.stringify(entries) : ''
+ const context = entries.length ? JSON.stringify(entries) : ''
+ const usedChars = context.length
+ return { context, usedChars, limitChars, percent: Math.min(100, Math.round((usedChars / limitChars) * 100)) }
 }
 
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts)
@@ -49,9 +66,10 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   rqAuthentication: `Session:${sessionToken.value}`,
   rqService: 'ilDecision:ragAsk',
   pcQuery: request.question,
-  pcFilter: request.agentId === 'settlement' ? 'Business' : request.agentId === 'product' ? 'Dev' : '',
   pcTitle: request.title,
   pcContext: request.context,
+  pcFilter: request.filter,
+  piTopResult: request.maxResults,
  }
  const timeout = withTimeout(signal, 45000)
  try {

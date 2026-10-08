@@ -38,3 +38,12 @@ export function summarizeTitle(question: string, maxWords = 6, maxChars = 42): s
 
  return capitalizeFirst(short)
 }
+
+/** Appends " (2)", " (3)", etc. to `title` until it no longer matches an existing conversation title (case-insensitive). */
+export function uniqueTitle(title: string, existingTitles: string[]): string {
+ const taken = new Set(existingTitles.map(t => t.trim().toLowerCase()))
+ if (!taken.has(title.trim().toLowerCase())) return title
+ let suffix = 2
+ while (taken.has(`${title.trim().toLowerCase()} (${suffix})`)) suffix++
+ return `${title} (${suffix})`
+}
