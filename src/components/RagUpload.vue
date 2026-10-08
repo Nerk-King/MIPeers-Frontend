@@ -27,7 +27,6 @@ const agentOptions = computed(() => labels.value.agents)
 const productOptions = computed(() => Object.keys(labels.value.products))
 const folderOptions = computed(() => labels.value.products[product.value] ?? [])
 watch(product, () => { if (!folderOptions.value.includes(folder.value)) folder.value = '' })
-const detailsComplete = computed(() => !!(product.value.trim() && folder.value.trim()))
 
 onMounted(loadLabels)
 
@@ -58,7 +57,7 @@ function dropped(event: DragEvent) {
 function removeEntry(id: string) { entries.value = entries.value.filter(entry => entry.id !== id) }
 
 async function uploadAll() {
- if (busy.value || !detailsComplete.value) return
+ if (busy.value) return
  busy.value = true
  let succeeded = 0
  for (const entry of entries.value) {
@@ -92,8 +91,8 @@ async function uploadAll() {
    <p v-if="labelsState === 'loading'" class="subtle rag-upload-labels-status">Loading products and folders…</p>
    <div v-else-if="labelsState === 'error'" class="rag-upload-labels-error" role="alert"><span>{{ labelsError }}</span><button type="button" class="outline-button" @click="loadLabels">Try again</button></div>
    <div v-else class="rag-upload-fields">
-    <label class="rag-upload-field">Product<select v-model="product" :disabled="busy" required><option value="" disabled>Choose product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
-    <label class="rag-upload-field">Folder<select v-model="folder" :disabled="busy || !product" required><option value="" disabled>{{ product ? 'Choose folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <label class="rag-upload-field"><span>Product <small>(optional)</small></span><select v-model="product" :disabled="busy"><option value="">No product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <label class="rag-upload-field"><span>Folder <small>(optional)</small></span><select v-model="folder" :disabled="busy || !product"><option value="">{{ product ? 'No folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
     <fieldset v-if="agentOptions.length" class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
    </div>
 
@@ -119,8 +118,8 @@ async function uploadAll() {
    </ul>
 
    <div class="rag-upload-actions">
-    <span>{{ busy ? 'Uploading…' : !entries.length ? 'Choose files to begin' : !detailsComplete ? 'Choose a product and folder' : entries.length + ' file(s) ready' }}</span>
-    <button class="primary-button" :disabled="!entries.length || !detailsComplete || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
+    <span>{{ busy ? 'Uploading…' : !entries.length ? 'Choose files to begin' : entries.length + ' file(s) ready' }}</span>
+    <button class="primary-button" :disabled="!entries.length || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
    </div>
   </section>
  </div>
@@ -141,7 +140,7 @@ async function uploadAll() {
 .rag-upload-field input, .rag-upload-field select, .rag-upload-summary { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-weight: 400; }
 .rag-upload-agents { margin: 0; padding: 0; border: 0; min-width: 0; }
 .rag-upload-agents legend { padding: 0; margin-bottom: 7px; }
-.rag-upload-agents legend small { color: var(--muted); font-weight: 400; }
+.rag-upload-field > span small, .rag-upload-agents legend small { color: var(--muted); font-weight: 400; }
 .rag-upload-agents label { display: inline-flex; align-items: center; gap: 7px; margin: 8px 16px 0 0; font-weight: 400; cursor: pointer; }
 .rag-upload-agents input { width: auto; padding: 0; accent-color: var(--purple); }
 .rag-upload-summary { padding: 7px 10px; font-size: 11px; }
