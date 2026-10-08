@@ -60,7 +60,9 @@ function dismissError() { error.value = '' }
 
 <style scoped>
 .login-page { display: flex; min-height: 100vh; width: 100%; background: #070e1b; }
-.login-live-toggle { position: absolute; top: 24px; right: 24px; z-index: 10; }
+.login-live-toggle { position: absolute; top: 24px; right: 24px; z-index: 10; font-size: 13px; padding: 9px 18px 9px 14px; background: #13203a; border-color: #3a3060; }
+.login-live-toggle .live-toggle-dot { width: 9px; height: 9px; }
+.login-live-toggle.live { background: #0f2a1f; }
 
 /* left panel */
 .login-panel { flex: 0 0 clamp(380px, 32vw, 505px); display: flex; flex-direction: column; padding: 9vh 6vw 5vh; background: linear-gradient(155deg, #0b1527, #081321 70%); border-right: 1px solid var(--line); }
@@ -81,7 +83,7 @@ function dismissError() { error.value = '' }
 .login-forgot:hover { color: #fff; }
 .login-register { text-align: center; font-size: 13px; color: var(--muted); margin: 0 0 34px; }
 .login-register a { color: var(--purple); font-weight: 600; margin-left: 5px; }
-.login-submit { align-self: flex-start; background: #7653da; border: 1px solid #9171e7; color: #fff; font-weight: 700; font-size: 14px; padding: 14px 40px; border-radius: 8px; box-shadow: 0 8px 20px #0004; }
+.login-submit { align-self: flex-start; background: #7653da; border: 1px solid #9171e7; color: #fff; font-weight: 700; font-size: 16px; padding: 17px 48px; border-radius: 9px; box-shadow: 0 8px 20px #0004; }
 .login-submit:hover:not(:disabled) { background: #8962e9; }
 .login-submit:disabled { opacity: 0.7; cursor: not-allowed; }
 

@@ -12,7 +12,7 @@ const DEFAULT_KNOWLEDGE_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/re
 const KNOWLEDGE_ENDPOINT = import.meta.env.VITE_KNOWLEDGE_ENDPOINT || DEFAULT_KNOWLEDGE_ENDPOINT
 
 const remoteDocuments = ref<KnowledgeDocument[]>([])
-export const libraryDocuments = computed(() => [...(isLive.value ? remoteDocuments.value : sampleDocuments), ...localResources.value.map(resourceDocument)])
+export const libraryDocuments = computed(() => [...(isLive.value && sessionToken.value ? remoteDocuments.value : sampleDocuments), ...localResources.value.map(resourceDocument)])
 
 function localTree(): KnowledgeNode[] {
  if (!localResources.value.length) return []
@@ -137,11 +137,16 @@ export async function downloadKnowledgeDocument(doc: KnowledgeDocument, signal?:
  }
 }
 
-/** Demo samples, or the real knowledge base when live mode is on — plus whatever's saved locally in this browser either way. */
+/**
+ * Demo samples, or the real knowledge base when live mode is on and a session exists — plus
+ * whatever's saved locally in this browser either way. Skips the real call entirely before login
+ * (no session yet), same guard as loadHistory() in App.vue — this runs unconditionally from App.vue's
+ * root onMounted, including on the login screen, so it must never assume the caller is signed in.
+ */
 export async function getKnowledgeTree(signal?: AbortSignal): Promise<KnowledgeTreeResponse> {
  await loadLocalResources()
  let tree: KnowledgeNode[] = knowledgeTree
- if (isLive.value) {
+ if (isLive.value && sessionToken.value) {
   const remote = await fetchRemoteKnowledgeBase(signal)
   remoteDocuments.value = remote.documents
   tree = remote.tree

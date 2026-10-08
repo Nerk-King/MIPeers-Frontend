@@ -1,12 +1,16 @@
 import { ref } from 'vue'
 
 // Single source of truth for every service's demo-vs-real behavior (login, chat, uploads, knowledge
-// library). Defaults to demo mode (safe for anyone pulling the repo) and is toggled from the UI
-// (the pill in the topbar), not per-service env vars — persisted so a choice survives a refresh.
+// library). Defaults to live mode and is toggled from the UI (the pill in the topbar and on the
+// login screen), not per-service env vars — persisted so a choice survives a refresh. An explicit
+// prior choice (either way) always wins; only a first-ever visit falls back to the live default.
 const STORAGE_KEY = 'mipeers-live-mode'
 
 function readStored(): boolean {
- try { return localStorage.getItem(STORAGE_KEY) === 'true' } catch { return false }
+ try {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  return stored === null ? true : stored === 'true'
+ } catch { return true }
 }
 
 export const isLive = ref(readStored())
