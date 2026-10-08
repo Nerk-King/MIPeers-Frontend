@@ -7,32 +7,10 @@ import { summarizeTitle } from './title'
 export interface RagRequest { question: string; agentId: string; title: string; context: string }
 export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
-export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number; truncated: boolean }
-
-// Budget for pcContext. Originally sized against URL query-string length (ragAsk was GET + query
-// params), tuned down from 3000 -> 1500 -> 750 (too tight, reset almost every turn) -> 1250. ragAsk
-// now sends everything as a JSON body instead, which removes the URL-length reason for a cap — this
-// is kept anyway as a sane upper bound on how much conversation history gets replayed per call.
-export const CONTEXT_CHAR_LIMIT = 1250
-
-/**
- * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext. Unlike a
- * sliding window, this doesn't drop the oldest turns one at a time — once the full history no
- * longer fits within limitChars, the whole context is cleared (the model starts fresh from that
- * point) rather than sending a partially-trimmed window. Measured as plain string length now that
- * pcContext travels in a JSON body rather than a URL. Exported so the UI can show the same
- * usage/limit the request will actually use.
- */
-export function buildChatContext(history: { role: string; content: string }[], limitChars = CONTEXT_CHAR_LIMIT): ChatContext {
+/** Serializes the full prior conversation as the JSON string expected by pcContext. */
+export function buildChatContext(history: { role: string; content: string }[]): string {
  const entries = history.map(m => ({ author: m.role === 'user' ? 'USER' : 'NUCLIA', text: m.content }))
- let context = entries.length ? JSON.stringify(entries) : ''
- let truncated = false
- if (context.length > limitChars) {
-  context = ''
-  truncated = true
- }
- const usedChars = context.length
- return { context, usedChars, limitChars, percent: Math.min(100, Math.round((usedChars / limitChars) * 100)), truncated }
+ return entries.length ? JSON.stringify(entries) : ''
 }
 
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts)
@@ -50,8 +28,8 @@ function demoSources(ids: string[]): RagSource[] {
  * returned by the login API ("Session:<token>" — note no backslash here, unlike the raw value the
  * login response itself echoes back). pcTitle carries the chat's own title. request.context is the
  * already-built pcContext value (see buildChatContext) — the caller owns deciding which slice of
- * history it represents, since resetting it once it overflows is a stateful, per-conversation
- * decision this function has no way to track on its own. Sent as a JSON body (same rq- and pc-
+ * history it represents. The full prior conversation is sent without a frontend cap.
+ * Sent as a JSON body (same rq- and pc-
  * prefixed field names as every other call here, just POSTed instead of put on the query string) so
  * pcContext isn't bound by URL length. On success the service returns:
  * { rqResponse: { opcResponse, opcResources, opcPageNumber } } — opcResponse is the answer text;
