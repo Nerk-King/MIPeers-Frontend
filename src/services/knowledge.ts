@@ -123,24 +123,45 @@ async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKno
  return { tree, documents }
 }
 
-// Dev/preview proxy that adds the RAG service-account key server-side (see ragProxy in vite.config.ts).
-const RAG_DOWNLOAD_BASE = import.meta.env.VITE_RAG_DOWNLOAD_BASE || '/rag-api'
+/** Decodes plain base64 (no "data:" prefix) into bytes. */
+function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+ const binary = atob(base64.replace(/\s/g, ''))
+ const bytes = new Uint8Array(binary.length)
+ for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+ return bytes
+}
 
 /**
- * Downloads a knowledge-base file. The downloadLink points straight at the RAG API, which rejects
- * anonymous requests, so only its /api/v1/... path is kept and the request goes through the proxy.
+ * Downloads a knowledge-base file through ilDecision:ragDownload. RAG rejects anonymous requests,
+ * so the backend fetches the file with the service-account key and returns it base64-encoded —
+ * the key never reaches the browser, and this works the same in dev and on the deployed server.
  */
 export async function downloadKnowledgeDocument(doc: KnowledgeDocument, signal?: AbortSignal): Promise<void> {
- const path = doc.downloadLink?.match(/\/?api\/v1\/.*/)?.[0]
- if (!path) throw new Error('This document has no download link.')
- const timeout = withTimeout(signal, 60000)
+ if (!doc.downloadLink) throw new Error('This document has no download link.')
+ const body = {
+  rqDataMode: 'VAR/JSON',
+  rqAuthentication: `Session:${sessionToken.value}`,
+  rqService: 'ilDecision:ragDownload',
+  pcDownloadLink: doc.downloadLink,
+ }
+ // Larger than the other calls' 45s: the whole file comes back in this one response.
+ const timeout = withTimeout(signal, 120000)
  try {
-  const response = await fetch(RAG_DOWNLOAD_BASE + (path.startsWith('/') ? path : '/' + path), { signal: timeout.signal })
-  // Without RAG_API_ORIGIN set, the dev server's SPA fallback answers with index.html instead of a 404.
-  if (response.ok && response.headers.get('content-type')?.includes('text/html')) throw new Error('Downloads are not configured. Set RAG_API_ORIGIN and RAG_API_KEY in .env and restart the dev server.')
-  if (response.status === 401 || response.status === 403) throw new Error('The knowledge base rejected the download. Check RAG_API_KEY in .env and restart the dev server.')
-  if (!response.ok) throw new Error('Unable to download this document. Please try again.')
-  const url = URL.createObjectURL(await response.blob())
+  const response = await fetch(KNOWLEDGE_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: timeout.signal })
+  // Same backend family as the other services: error details come back in the JSON body even on a
+  // non-2xx status, so parse the body before deciding whether to give up on !response.ok.
+  let data: { rqResponse?: { rqErrorMessage?: string; oplSuccess?: boolean; opcResponse?: string; opcFileData?: string; opcContentType?: string } } | null = null
+  try { data = await response.json() } catch { data = null }
+  const rq = data?.rqResponse ?? {}
+  if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
+  if (!response.ok) throw new Error('The download service is unavailable. Please try again.')
+  if (rq.oplSuccess === false) throw new Error(rq.opcResponse || 'Unable to download this document. Please try again.')
+  if (typeof rq.opcFileData !== 'string') throw new Error('The download service returned an invalid response.')
+
+  let bytes: Uint8Array<ArrayBuffer>
+  try { bytes = base64ToBytes(rq.opcFileData) }
+  catch { throw new Error('The downloaded file could not be decoded.') }
+  const url = URL.createObjectURL(new Blob([bytes], { type: rq.opcContentType || 'application/octet-stream' }))
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = doc.name
