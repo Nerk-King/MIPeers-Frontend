@@ -23,7 +23,21 @@ const DEMO_LABELS: RagLabels = {
 
 type LabelSet = { LabelSetName?: string; ttLabels?: { LabelName?: string }[] }
 
-export async function fetchRagLabels(): Promise<RagLabels> {
+// The label list rarely changes, so it's fetched once per session and shared by the upload screen
+// and the knowledge library. A failed fetch isn't cached, so the next caller retries.
+let labelsCache: { key: string; promise: Promise<RagLabels> } | null = null
+
+export function fetchRagLabels(): Promise<RagLabels> {
+ const key = isLive.value ? `live:${sessionToken.value}` : 'demo'
+ if (labelsCache?.key !== key) {
+  const promise = requestRagLabels()
+  labelsCache = { key, promise }
+  promise.catch(() => { if (labelsCache?.promise === promise) labelsCache = null })
+ }
+ return labelsCache.promise
+}
+
+async function requestRagLabels(): Promise<RagLabels> {
  if (!isLive.value) {
   await new Promise(resolve => setTimeout(resolve, 300))
   return DEMO_LABELS

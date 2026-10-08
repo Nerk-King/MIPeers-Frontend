@@ -1,41 +1,31 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { getKnowledgeTree } from '../services/knowledge'
-import { uploadRevision } from '../services/uploads'
-import type { KnowledgeDocument, KnowledgeNode } from '../data'
+import { onMounted, watch } from 'vue'
+import { knowledgeStatus, libraryDocuments as docs, libraryTree as tree, loadKnowledgeBase } from '../services/knowledge'
+import { sessionToken } from '../services/auth'
+import { isLive } from '../services/liveMode'
+import type { KnowledgeDocument } from '../data'
 import Icon from './Icon.vue'
 import KnowledgeTreeNode from './KnowledgeTreeNode.vue'
 
 defineProps<{ active?: string[] }>()
 const emit = defineEmits<{ open: [doc: KnowledgeDocument] }>()
 
-const tree = ref<KnowledgeNode[]>([])
-const docs = ref<KnowledgeDocument[]>([])
-const loading = ref(true)
-const error = ref('')
-
+// The tree is shared state from services/knowledge: already-loaded data renders immediately, and
+// local uploads/removals show up without a refetch. This only kicks off the (cached) load.
+function load() { loadKnowledgeBase().catch(() => {}) }
 onMounted(load)
-watch(uploadRevision, load)
-async function load() {
- loading.value = true
- error.value = ''
- try {
-  const data = await getKnowledgeTree()
-  tree.value = data.tree
-  docs.value = data.documents
- } catch {
-  error.value = 'Could not load the knowledge library. Please try again.'
- } finally {
-  loading.value = false
- }
-}
+watch([isLive, sessionToken], load)
 </script>
 <template>
  <div class="knowledge-tree">
-  <p v-if="loading" class="tree-status"><Icon name="Sparkles" :size="14"/> Loading knowledge sources…</p>
-  <p v-else-if="error" class="tree-status tree-error">{{ error }}</p>
+  <p v-if="knowledgeStatus === 'loading' || knowledgeStatus === 'idle'" class="tree-status"><Icon name="Sparkles" :size="14"/> Loading knowledge sources…</p>
+  <p v-else-if="knowledgeStatus === 'error'" class="tree-status tree-error">Could not load the knowledge library. <button type="button" class="tree-retry" @click="load">Try again</button></p>
   <template v-else>
    <KnowledgeTreeNode v-for="node in tree" :key="node.id" :node="node" :active="active" :documents="docs" :expanded="true" @open="emit('open', $event)"/>
   </template>
  </div>
 </template>
+
+<style scoped>
+.tree-retry { padding: 0; color: var(--purple); font-size: inherit; text-decoration: underline; }
+</style>

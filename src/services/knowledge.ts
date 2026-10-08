@@ -6,8 +6,6 @@ import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
 import { fetchRagLabels, type RagLabels } from './ragUpload'
 
-export interface KnowledgeTreeResponse { tree: KnowledgeNode[]; documents: KnowledgeDocument[] }
-
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts).
 const DEFAULT_KNOWLEDGE_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/rest.w' : 'https://mn2503.ils.mip.co.za/web_pvtken/rest.w'
 const KNOWLEDGE_ENDPOINT = import.meta.env.VITE_KNOWLEDGE_ENDPOINT || DEFAULT_KNOWLEDGE_ENDPOINT
@@ -158,20 +156,54 @@ export async function downloadKnowledgeDocument(doc: KnowledgeDocument, signal?:
  }
 }
 
+// One shared copy of the knowledge base for every tree on screen (chat rail, library page, drawer).
+// It's fetched once per session and reused; refresh with loadKnowledgeBase({ refresh: true }).
+const remoteTree = ref<KnowledgeNode[]>([])
+export const knowledgeStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
+// Each level sorts folders before files, then alphabetically (ignoring case); a folder named
+// "General" always goes last among the folders.
+function sortTree(nodes: KnowledgeNode[]): KnowledgeNode[] {
+ const rank = (node: KnowledgeNode) => node.type === 'file' ? 2 : node.name.trim().toLowerCase() === 'general' ? 1 : 0
+ return nodes
+  .map(node => node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node)
+  .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
+}
+export const libraryTree = computed<KnowledgeNode[]>(() => [...localTree().map(root => root.type === 'folder' ? { ...root, children: sortTree(root.children) } : root), ...sortTree(isLive.value && sessionToken.value ? remoteTree.value : knowledgeTree)])
+let loaded: { key: string; run: number; promise: Promise<void> } | null = null
+let runCount = 0
+
 /**
  * Demo samples, or the real knowledge base when live mode is on and a session exists — plus
  * whatever's saved locally in this browser either way. Skips the real call entirely before login
  * (no session yet), same guard as loadHistory() in App.vue — this runs unconditionally from App.vue's
  * root onMounted, including on the login screen, so it must never assume the caller is signed in.
+ * Concurrent and repeat calls share one request; only `refresh` forces a new one.
  */
-export async function getKnowledgeTree(signal?: AbortSignal): Promise<KnowledgeTreeResponse> {
- await loadLocalResources()
- let tree: KnowledgeNode[] = knowledgeTree
- if (isLive.value && sessionToken.value) {
-  const remote = await fetchRemoteKnowledgeBase(signal)
-  remoteDocuments.value = remote.documents
-  tree = remote.tree
- }
- if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
- return { tree: [...localTree(), ...tree], documents: libraryDocuments.value }
+export function loadKnowledgeBase(options: { refresh?: boolean } = {}): Promise<void> {
+ const live = isLive.value && !!sessionToken.value
+ const key = live ? `live:${sessionToken.value}` : 'demo'
+ if (loaded?.key === key && !options.refresh) return loaded.promise
+ // Keep showing what's already loaded while a refresh runs; only a library with nothing to show yet shows the loading state.
+ const hadData = loaded?.key === key && knowledgeStatus.value === 'ready'
+ if (!hadData) knowledgeStatus.value = 'loading'
+ // A newer load (refresh, login/logout, live toggle) supersedes this one; its late result is dropped.
+ const run = ++runCount
+ const promise = (async () => {
+  await loadLocalResources()
+  if (live) {
+   const remote = await fetchRemoteKnowledgeBase()
+   if (loaded?.run !== run) return
+   remoteDocuments.value = remote.documents
+   remoteTree.value = remote.tree
+  }
+  if (loaded?.run === run) knowledgeStatus.value = 'ready'
+ })()
+ loaded = { key, run, promise }
+ promise.catch(() => {
+  if (loaded?.run !== run) return
+  loaded = null
+  // A failed refresh keeps the library that's already on screen; the next load simply retries.
+  if (!hadData) knowledgeStatus.value = 'error'
+ })
+ return promise
 }
