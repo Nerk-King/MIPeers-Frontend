@@ -49,6 +49,7 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   rqAuthentication: `Session:${sessionToken.value}`,
   rqService: 'ilDecision:ragAsk',
   pcQuery: request.question,
+  pcFilter: request.agentId === 'settlement' ? 'Business' : request.agentId === 'product' ? 'Dev' : '',
   pcTitle: request.title,
   pcContext: request.context,
  }
