@@ -2,19 +2,14 @@
 import { v4 as uuidv4 } from 'uuid'
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './Icon.vue'
-import { isFileSystemAccessSupported, hasChosenUploadsFolder, getGrantedUploadsFolder, chooseUploadsFolder, requestUploadsFolderAccess, writeFileToFolder } from '../services/localFs'
-import { ragUpload } from '../services/ragUpload'
+import { fetchRagLabels, ragUpload, type RagLabels } from '../services/ragUpload'
 import { isLive } from '../services/liveMode'
 
-const props = defineProps<{ uploadsPath: string }>()
-const emit = defineEmits<{ close: []; openSettings: []; uploaded: [count: number] }>()
+const emit = defineEmits<{ close: []; uploaded: [count: number] }>()
 
-type EntryStatus = 'pending' | 'writing' | 'uploading' | 'done' | 'error'
+type EntryStatus = 'pending' | 'uploading' | 'done' | 'error'
 type Entry = { id: string; file: File; summary: string; status: EntryStatus; error?: string }
 
-const folderState = ref<'checking' | 'none' | 'needs-permission' | 'granted'>('checking')
-const granting = ref(false)
-const grantError = ref('')
 const entries = ref<Entry[]>([])
 const busy = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -23,35 +18,28 @@ const dragging = ref(false)
 const product = ref('')
 const folder = ref('')
 const agents = ref<string[]>([])
-const agentOptions = ['Dev', 'Business']
-// Each product has its own set of folders; the folder list follows whichever product is chosen.
-const productFolders: Record<string, string[]> = {
- DriveCash: ['DriveCash', 'Vehicle', 'Vehicle-Secured Loan'],
- RevolvingCredit: ['Revolving Credit', 'RevolvingCredit'],
- FlexiTerm: ['FlexiTerm', 'Term Loan', 'Personal Loan'],
-}
-const productOptions = Object.keys(productFolders)
-const folderOptions = computed(() => productFolders[product.value] ?? [])
+// Products, their folders and the agents all come from ilDecision:fetchRagLabelList; the folder
+// list follows whichever product is chosen.
+const labels = ref<RagLabels>({ products: {}, agents: [] })
+const labelsState = ref<'loading' | 'ready' | 'error'>('loading')
+const labelsError = ref('')
+const agentOptions = computed(() => labels.value.agents)
+const productOptions = computed(() => Object.keys(labels.value.products))
+const folderOptions = computed(() => labels.value.products[product.value] ?? [])
 watch(product, () => { if (!folderOptions.value.includes(folder.value)) folder.value = '' })
 const detailsComplete = computed(() => !!(product.value.trim() && folder.value.trim()))
 
-onMounted(refreshFolderState)
+onMounted(loadLabels)
 
-async function refreshFolderState() {
- if (!isFileSystemAccessSupported) { folderState.value = 'none'; return }
- const granted = await getGrantedUploadsFolder()
- if (granted) { folderState.value = 'granted'; return }
- folderState.value = (await hasChosenUploadsFolder()) ? 'needs-permission' : 'none'
-}
-
-async function grantFolder() {
- granting.value = true; grantError.value = ''
+async function loadLabels() {
+ labelsState.value = 'loading'; labelsError.value = ''
  try {
-  if (folderState.value === 'needs-permission') await requestUploadsFolderAccess()
-  else await chooseUploadsFolder()
-  folderState.value = 'granted'
- } catch (e) { grantError.value = e instanceof Error ? e.message : 'Could not get folder access.' }
- finally { granting.value = false }
+  labels.value = await fetchRagLabels()
+  labelsState.value = 'ready'
+ } catch (e) {
+  labelsError.value = e instanceof Error ? e.message : 'Could not load the product and folder lists.'
+  labelsState.value = 'error'
+ }
 }
 
 function stage(files: File[]) {
@@ -71,17 +59,13 @@ function removeEntry(id: string) { entries.value = entries.value.filter(entry =>
 
 async function uploadAll() {
  if (busy.value || !detailsComplete.value) return
- const granted = await getGrantedUploadsFolder()
- if (!granted) { folderState.value = 'needs-permission'; return }
  busy.value = true
  let succeeded = 0
  for (const entry of entries.value) {
   if (entry.status === 'done') { succeeded++; continue }
-  entry.status = 'writing'; entry.error = undefined
+  entry.status = 'uploading'; entry.error = undefined
   try {
-   await writeFileToFolder(granted, entry.file)
-   entry.status = 'uploading'
-   await ragUpload(props.uploadsPath, entry.file, { product: product.value, folder: folder.value, summary: entry.summary, agent: agentOptions.filter(option => agents.value.includes(option)).join(',') })
+   await ragUpload(entry.file, { product: product.value, folder: folder.value, summary: entry.summary, agent: agentOptions.value.filter(option => agents.value.includes(option)).join(',') })
    entry.status = 'done'
    succeeded++
   } catch (e) {
@@ -105,62 +89,39 @@ async function uploadAll() {
    <p class="subtle rag-upload-intro">Add documents for your team to find answers from.</p>
    <div v-if="!isLive" class="rag-upload-note"><Icon name="Shield" :size="18"/><span><strong>Demo mode</strong>The real ingestion call is simulated. Switch to Live at the top of the screen to use the real service.</span></div>
 
-   <template v-if="!uploadsPath">
-    <div class="rag-upload-status warn">
-     <Icon name="SlidersHorizontal" :size="18"/>
-     <span>Set your local uploads folder path in Settings before uploading.</span>
-    </div>
-    <button class="outline-button" @click="emit('openSettings')">Open Settings</button>
-   </template>
+   <p v-if="labelsState === 'loading'" class="subtle rag-upload-labels-status">Loading products and folders…</p>
+   <div v-else-if="labelsState === 'error'" class="rag-upload-labels-error" role="alert"><span>{{ labelsError }}</span><button type="button" class="outline-button" @click="loadLabels">Try again</button></div>
+   <div v-else class="rag-upload-fields">
+    <label class="rag-upload-field">Product<select v-model="product" :disabled="busy" required><option value="" disabled>Choose product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <label class="rag-upload-field">Folder<select v-model="folder" :disabled="busy || !product" required><option value="" disabled>{{ product ? 'Choose folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <fieldset v-if="agentOptions.length" class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
+   </div>
 
-   <template v-else-if="folderState === 'none' && !isFileSystemAccessSupported">
-    <div class="rag-upload-status warn"><Icon name="Shield" :size="18"/><span>Your browser can't grant local folder access. Use Chrome or Edge to upload.</span></div>
-   </template>
+   <div :class="['upload-dropzone', { dragging }]" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="dropped">
+    <span class="upload-drop-icon"><Icon name="ArrowUp" :size="26"/></span>
+    <strong>Drop files here</strong>
+    <p>Or choose files from your device.</p>
+    <button type="button" class="outline-button" :disabled="busy" @click="fileInput?.click()">Choose files</button>
+   </div>
+   <input ref="fileInput" type="file" multiple hidden @change="picked" aria-label="Select files to upload"/>
 
-   <template v-else-if="folderState !== 'granted'">
-    <div class="rag-upload-status">
-     <Icon name="Folder" :size="18"/>
-     <span><strong>{{ uploadsPath }}</strong><small>{{ folderState === 'needs-permission' ? 'Access needs to be reconfirmed for this folder.' : 'Choose this exact folder when the browser prompt opens.' }}</small></span>
-    </div>
-    <p v-if="grantError" class="upload-error" role="alert">{{ grantError }}</p>
-    <button class="primary-button" :disabled="granting" @click="grantFolder"><Icon name="Folder" :size="17"/>{{ granting ? 'Waiting…' : folderState === 'needs-permission' ? 'Allow access' : 'Choose folder' }}</button>
-   </template>
+   <ul v-if="entries.length" class="rag-upload-queue">
+    <li v-for="entry in entries" :key="entry.id">
+     <Icon name="FileText" :size="18"/>
+     <span><strong>{{ entry.file.name }}</strong><input v-model="entry.summary" class="rag-upload-summary" placeholder="Summary (optional)" maxlength="500" :disabled="busy || entry.status === 'done'" :aria-label="'Summary for ' + entry.file.name"/><small v-if="entry.status === 'error'">{{ entry.error }}</small></span>
+     <span :class="['rag-upload-status-badge', entry.status]">
+      <Icon v-if="entry.status === 'done'" name="Check" :size="14"/>
+      <Icon v-else-if="entry.status === 'error'" name="X" :size="14"/>
+      {{ entry.status === 'pending' ? 'Queued' : entry.status === 'uploading' ? 'Sending…' : entry.status === 'done' ? 'Done' : 'Failed' }}
+     </span>
+     <button class="icon-button" :disabled="busy" :aria-label="'Remove ' + entry.file.name" @click="removeEntry(entry.id)"><Icon name="X" :size="16"/></button>
+    </li>
+   </ul>
 
-   <template v-else>
-    <div class="rag-upload-status ok"><Icon name="Check" :size="18"/><span><strong>{{ uploadsPath }}</strong><small>Folder access granted</small></span></div>
-
-    <div class="rag-upload-fields">
-     <label class="rag-upload-field">Product<select v-model="product" :disabled="busy" required><option value="" disabled>Choose product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
-     <label class="rag-upload-field">Folder<select v-model="folder" :disabled="busy || !product" required><option value="" disabled>{{ product ? 'Choose folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
-     <fieldset class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
-    </div>
-
-    <div :class="['upload-dropzone', { dragging }]" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="dropped">
-     <span class="upload-drop-icon"><Icon name="ArrowUp" :size="26"/></span>
-     <strong>Drop files here</strong>
-     <p>Or choose files from your device.</p>
-     <button type="button" class="outline-button" :disabled="busy" @click="fileInput?.click()">Choose files</button>
-    </div>
-    <input ref="fileInput" type="file" multiple hidden @change="picked" aria-label="Select files to upload"/>
-
-    <ul v-if="entries.length" class="rag-upload-queue">
-     <li v-for="entry in entries" :key="entry.id">
-      <Icon name="FileText" :size="18"/>
-      <span><strong>{{ entry.file.name }}</strong><input v-model="entry.summary" class="rag-upload-summary" placeholder="Summary (optional)" maxlength="500" :disabled="busy || entry.status === 'done'" :aria-label="'Summary for ' + entry.file.name"/><small v-if="entry.status === 'error'">{{ entry.error }}</small></span>
-      <span :class="['rag-upload-status-badge', entry.status]">
-       <Icon v-if="entry.status === 'done'" name="Check" :size="14"/>
-       <Icon v-else-if="entry.status === 'error'" name="X" :size="14"/>
-       {{ entry.status === 'pending' ? 'Queued' : entry.status === 'writing' ? 'Saving…' : entry.status === 'uploading' ? 'Sending…' : entry.status === 'done' ? 'Done' : 'Failed' }}
-      </span>
-      <button class="icon-button" :disabled="busy" :aria-label="'Remove ' + entry.file.name" @click="removeEntry(entry.id)"><Icon name="X" :size="16"/></button>
-     </li>
-    </ul>
-
-    <div class="rag-upload-actions">
-     <span>{{ busy ? 'Uploading…' : !entries.length ? 'Choose files to begin' : !detailsComplete ? 'Choose a product and folder' : entries.length + ' file(s) ready' }}</span>
-     <button class="primary-button" :disabled="!entries.length || !detailsComplete || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
-    </div>
-   </template>
+   <div class="rag-upload-actions">
+    <span>{{ busy ? 'Uploading…' : !entries.length ? 'Choose files to begin' : !detailsComplete ? 'Choose a product and folder' : entries.length + ' file(s) ready' }}</span>
+    <button class="primary-button" :disabled="!entries.length || !detailsComplete || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
+   </div>
   </section>
  </div>
 </template>
@@ -170,19 +131,11 @@ async function uploadAll() {
 .rag-upload-note { display: flex; gap: 11px; padding: 14px; border: 1px solid #8a5a22; border-radius: 10px; background: #3a2a12; color: #f3c177; font-size: 12px; line-height: 1.6; margin-bottom: 20px; }
 .rag-upload-note svg { color: #efb166; margin-top: 3px; }
 .rag-upload-note strong { display: block; font-weight: 600; margin-bottom: 3px; }
-.rag-upload-status { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin-bottom: 16px; }
-.rag-upload-status svg { color: var(--purple); margin-top: 2px; flex-shrink: 0; }
-.rag-upload-status span { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.rag-upload-status small { color: var(--muted); font-size: 11px; }
-.rag-upload-status.warn { border-color: #8a5a22; background: #3a2a12; }
-.rag-upload-status.warn svg { color: #efb166; }
-.rag-upload-status.warn span { color: #f3c177; font-weight: 600; }
-.rag-upload-status.ok svg { color: #42dba4; }
 :global([data-theme="light"] .rag-upload-note) { border-color: #e0a458; background: #fdf1e0; color: #8a5a22; }
 :global([data-theme="light"] .rag-upload-note svg) { color: #b9752c; }
-:global([data-theme="light"] .rag-upload-status.warn) { border-color: #e0a458; background: #fdf1e0; }
-:global([data-theme="light"] .rag-upload-status.warn svg) { color: #b9752c; }
-:global([data-theme="light"] .rag-upload-status.warn span) { color: #8a5a22; }
+.rag-upload-labels-status { font-size: 12px; margin-bottom: 16px; }
+.rag-upload-labels-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #a8586d; border-radius: 8px; color: #f5a1b4; font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
+:global([data-theme="light"] .rag-upload-labels-error) { color: #a12949; }
 .rag-upload-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .rag-upload-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
 .rag-upload-field input, .rag-upload-field select, .rag-upload-summary { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-weight: 400; }
@@ -209,5 +162,5 @@ async function uploadAll() {
 .rag-upload-status-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .rag-upload-status-badge.done { color: #42dba4; }
 .rag-upload-status-badge.error { color: #f5a1b4; }
-.rag-upload-status-badge.writing, .rag-upload-status-badge.uploading { color: var(--purple); }
+.rag-upload-status-badge.uploading { color: var(--purple); }
 </style>

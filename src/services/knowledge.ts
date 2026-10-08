@@ -4,6 +4,7 @@ import { localResources, loadLocalResources, resourceDocument } from './uploads'
 import { sessionToken } from './auth'
 import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
+import { fetchRagLabels, type RagLabels } from './ragUpload'
 
 export interface KnowledgeTreeResponse { tree: KnowledgeNode[]; documents: KnowledgeDocument[] }
 
@@ -44,7 +45,7 @@ interface RemoteKnowledgeBase { tree: KnowledgeNode[]; documents: KnowledgeDocum
  * JSON.parse already resolves the escaped slashes correctly; the extra replace is just a defensive
  * fallback in case a response ever arrives double-escaped.
  */
-async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKnowledgeBase> {
+async function fetchRemoteGroups(signal?: AbortSignal): Promise<RemoteProductGroup[]> {
  const params = new URLSearchParams({
   rqDataMode: 'VAR/JSON',
   rqAuthentication: `Session:${sessionToken.value}`,
@@ -64,44 +65,64 @@ async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKno
   try { parsed = JSON.parse(rq.opcDocuments) }
   catch { parsed = JSON.parse(rq.opcDocuments.replace(/\\\//g, '/')) }
   if (!Array.isArray(parsed)) throw new Error('The knowledge service returned an invalid response.')
-
-  // Each product becomes a top-level folder; a file's own folder (when set) nests beneath it.
-  const documents: KnowledgeDocument[] = []
-  const tree: KnowledgeNode[] = parsed.map((group, groupIndex) => {
-   const product = group.product?.trim() || 'Unclassified'
-   const productNode: KnowledgeNode = { id: `kb-product-${groupIndex}`, name: product, type: 'folder', children: [] }
-   for (const [fileIndex, entry] of (group.files ?? []).entries()) {
-    const id = `kb-${groupIndex}-${fileIndex}`
-    const folder = entry.folder?.trim() || ''
-    const failed = entry.status?.toUpperCase() === 'ERROR'
-    documents.push({
-     id,
-     name: entry.fileName || 'Untitled document',
-     category: product,
-     folder,
-     pages: '—',
-     date: '',
-     content: entry.summary?.trim() || (failed ? 'This document failed to process and is not available to the agents.' : 'No summary available for this document.'),
-     downloadLink: entry.downloadLink || undefined,
-    })
-    let parent = productNode
-    if (folder) {
-     const folderId = `kb-folder-${groupIndex}-${folder}`
-     let folderNode = parent.children.find(node => node.id === folderId)
-     if (!folderNode) { folderNode = { id: folderId, name: folder, type: 'folder', children: [] }; parent.children.push(folderNode) }
-     if (folderNode.type === 'folder') parent = folderNode
-    }
-    parent.children.push({ id: 'kb-node-' + id, name: entry.fileName || 'Untitled document', type: 'file', documentId: id })
-   }
-   return productNode
-  })
-  return { tree, documents }
+  return parsed
  } catch (e) {
   if (e instanceof DOMException && e.name === 'AbortError' && timeout.didTimeOut()) throw new Error('The knowledge service took too long to respond. Please try again.')
   throw e
  } finally {
   timeout.cleanup()
  }
+}
+
+/**
+ * The folder structure comes from ilDecision:fetchRagLabelList — each product (label set) is a
+ * top-level folder with its labels as subfolders, shown even when empty — and each document from
+ * ragKnowledgeBase is filed under its matching product/folder (matched ignoring case, spaces and punctuation, so "Revolving Credit" files under "revolvingcredit"). A
+ * document whose product or folder isn't in the label list still gets a folder of its own, so
+ * nothing in the knowledge base is hidden.
+ */
+async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKnowledgeBase> {
+ // The labels only shape the tree; if they can't be loaded, fall back to folders built from the documents alone.
+ const [groups, labels] = await Promise.all([
+  fetchRemoteGroups(signal),
+  fetchRagLabels().catch((): RagLabels => ({ products: {}, agents: [] })),
+ ])
+
+ const tree: KnowledgeNode[] = []
+ const matchKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+ const folderNode = (parent: KnowledgeNode[], id: string, name: string): KnowledgeNode[] => {
+  let node = parent.find(n => n.type === 'folder' && matchKey(n.name) === matchKey(name))
+  if (!node) { node = { id, name, type: 'folder', children: [] }; parent.push(node) }
+  return node.type === 'folder' ? node.children : parent
+ }
+ for (const [product, folders] of Object.entries(labels.products)) {
+  const children = folderNode(tree, `kb-product-${product}`, product)
+  for (const folder of folders) folderNode(children, `kb-folder-${product}-${folder}`, folder)
+ }
+
+ const documents: KnowledgeDocument[] = []
+ for (const [groupIndex, group] of groups.entries()) {
+  const product = group.product?.trim() || 'Unclassified'
+  const productChildren = folderNode(tree, `kb-product-${product}`, product)
+  for (const [fileIndex, entry] of (group.files ?? []).entries()) {
+   const id = `kb-${groupIndex}-${fileIndex}`
+   const folder = entry.folder?.trim() || ''
+   const failed = entry.status?.toUpperCase() === 'ERROR'
+   documents.push({
+    id,
+    name: entry.fileName || 'Untitled document',
+    category: product,
+    folder,
+    pages: '—',
+    date: '',
+    content: entry.summary?.trim() || (failed ? 'This document failed to process and is not available to the agents.' : 'No summary available for this document.'),
+    downloadLink: entry.downloadLink || undefined,
+   })
+   const parent = folder ? folderNode(productChildren, `kb-folder-${product}-${folder}`, folder) : productChildren
+   parent.push({ id: 'kb-node-' + id, name: entry.fileName || 'Untitled document', type: 'file', documentId: id })
+  }
+ }
+ return { tree, documents }
 }
 
 // Dev/preview proxy that adds the RAG service-account key server-side (see ragProxy in vite.config.ts).
