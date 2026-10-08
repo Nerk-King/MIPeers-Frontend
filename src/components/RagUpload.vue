@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { v4 as uuidv4 } from 'uuid'
+import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './Icon.vue'
 import { isFileSystemAccessSupported, hasChosenUploadsFolder, getGrantedUploadsFolder, chooseUploadsFolder, requestUploadsFolderAccess, writeFileToFolder } from '../services/localFs'
 import { ragUpload } from '../services/ragUpload'
@@ -9,7 +10,7 @@ const props = defineProps<{ uploadsPath: string }>()
 const emit = defineEmits<{ close: []; openSettings: []; uploaded: [count: number] }>()
 
 type EntryStatus = 'pending' | 'writing' | 'uploading' | 'done' | 'error'
-type Entry = { id: string; file: File; status: EntryStatus; error?: string }
+type Entry = { id: string; file: File; summary: string; status: EntryStatus; error?: string }
 
 const folderState = ref<'checking' | 'none' | 'needs-permission' | 'granted'>('checking')
 const granting = ref(false)
@@ -18,6 +19,21 @@ const entries = ref<Entry[]>([])
 const busy = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
+// Shared by every file in this batch; the summary is captured per file on its queue row.
+const product = ref('')
+const folder = ref('')
+const agents = ref<string[]>([])
+const agentOptions = ['Dev', 'Business']
+// Each product has its own set of folders; the folder list follows whichever product is chosen.
+const productFolders: Record<string, string[]> = {
+ DriveCash: ['DriveCash', 'Vehicle', 'Vehicle-Secured Loan'],
+ RevolvingCredit: ['Revolving Credit', 'RevolvingCredit'],
+ FlexiTerm: ['FlexiTerm', 'Term Loan', 'Personal Loan'],
+}
+const productOptions = Object.keys(productFolders)
+const folderOptions = computed(() => productFolders[product.value] ?? [])
+watch(product, () => { if (!folderOptions.value.includes(folder.value)) folder.value = '' })
+const detailsComplete = computed(() => !!(product.value.trim() && folder.value.trim()))
 
 onMounted(refreshFolderState)
 
@@ -39,7 +55,7 @@ async function grantFolder() {
 }
 
 function stage(files: File[]) {
- const next = files.map(file => ({ id: crypto.randomUUID(), file, status: 'pending' as EntryStatus }))
+ const next = files.map(file => ({ id: uuidv4(), file, summary: '', status: 'pending' as EntryStatus }))
  entries.value = [...entries.value, ...next]
 }
 function picked(event: Event) {
@@ -54,7 +70,7 @@ function dropped(event: DragEvent) {
 function removeEntry(id: string) { entries.value = entries.value.filter(entry => entry.id !== id) }
 
 async function uploadAll() {
- if (busy.value) return
+ if (busy.value || !detailsComplete.value) return
  const granted = await getGrantedUploadsFolder()
  if (!granted) { folderState.value = 'needs-permission'; return }
  busy.value = true
@@ -65,7 +81,7 @@ async function uploadAll() {
   try {
    await writeFileToFolder(granted, entry.file)
    entry.status = 'uploading'
-   await ragUpload(props.uploadsPath, entry.file)
+   await ragUpload(props.uploadsPath, entry.file, { product: product.value, folder: folder.value, summary: entry.summary, agent: agentOptions.filter(option => agents.value.includes(option)).join(',') })
    entry.status = 'done'
    succeeded++
   } catch (e) {
@@ -113,6 +129,12 @@ async function uploadAll() {
    <template v-else>
     <div class="rag-upload-status ok"><Icon name="Check" :size="18"/><span><strong>{{ uploadsPath }}</strong><small>Folder access granted</small></span></div>
 
+    <div class="rag-upload-fields">
+     <label class="rag-upload-field">Product<select v-model="product" :disabled="busy" required><option value="" disabled>Choose product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
+     <label class="rag-upload-field">Folder<select v-model="folder" :disabled="busy || !product" required><option value="" disabled>{{ product ? 'Choose folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
+     <fieldset class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
+    </div>
+
     <div :class="['upload-dropzone', { dragging }]" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="dropped">
      <span class="upload-drop-icon"><Icon name="ArrowUp" :size="26"/></span>
      <strong>Drop files here</strong>
@@ -124,7 +146,7 @@ async function uploadAll() {
     <ul v-if="entries.length" class="rag-upload-queue">
      <li v-for="entry in entries" :key="entry.id">
       <Icon name="FileText" :size="18"/>
-      <span><strong>{{ entry.file.name }}</strong><small v-if="entry.status === 'error'">{{ entry.error }}</small></span>
+      <span><strong>{{ entry.file.name }}</strong><input v-model="entry.summary" class="rag-upload-summary" placeholder="Summary (optional)" maxlength="500" :disabled="busy || entry.status === 'done'" :aria-label="'Summary for ' + entry.file.name"/><small v-if="entry.status === 'error'">{{ entry.error }}</small></span>
       <span :class="['rag-upload-status-badge', entry.status]">
        <Icon v-if="entry.status === 'done'" name="Check" :size="14"/>
        <Icon v-else-if="entry.status === 'error'" name="X" :size="14"/>
@@ -135,8 +157,8 @@ async function uploadAll() {
     </ul>
 
     <div class="rag-upload-actions">
-     <span>{{ busy ? 'Uploading…' : entries.length ? entries.length + ' file(s) ready' : 'Choose files to begin' }}</span>
-     <button class="primary-button" :disabled="!entries.length || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
+     <span>{{ busy ? 'Uploading…' : !entries.length ? 'Choose files to begin' : !detailsComplete ? 'Choose a product and folder' : entries.length + ' file(s) ready' }}</span>
+     <button class="primary-button" :disabled="!entries.length || !detailsComplete || busy" @click="uploadAll"><Icon :name="busy ? 'Clock3' : 'ArrowUp'" :size="17"/>{{ busy ? 'Uploading…' : 'Upload' }}</button>
     </div>
    </template>
   </section>
@@ -161,6 +183,15 @@ async function uploadAll() {
 :global([data-theme="light"] .rag-upload-status.warn) { border-color: #e0a458; background: #fdf1e0; }
 :global([data-theme="light"] .rag-upload-status.warn svg) { color: #b9752c; }
 :global([data-theme="light"] .rag-upload-status.warn span) { color: #8a5a22; }
+.rag-upload-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rag-upload-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
+.rag-upload-field input, .rag-upload-field select, .rag-upload-summary { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-weight: 400; }
+.rag-upload-agents { margin: 0; padding: 0; border: 0; min-width: 0; }
+.rag-upload-agents legend { padding: 0; margin-bottom: 7px; }
+.rag-upload-agents legend small { color: var(--muted); font-weight: 400; }
+.rag-upload-agents label { display: inline-flex; align-items: center; gap: 7px; margin: 8px 16px 0 0; font-weight: 400; cursor: pointer; }
+.rag-upload-agents input { width: auto; padding: 0; accent-color: var(--purple); }
+.rag-upload-summary { padding: 7px 10px; font-size: 11px; }
 .rag-upload-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); text-align: center; }
 .rag-upload-actions > span { color: var(--muted); font-size: 11px; }
 .rag-upload-actions > button { min-width: 200px; justify-content: center; }

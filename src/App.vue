@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { v4 as uuidv4 } from 'uuid'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from './components/Icon.vue'
@@ -135,12 +136,12 @@ function openConversation(c: Conversation) { controller?.abort(); currentId.valu
 async function send(text = question.value) {
  if (!text.trim() || pending.value) return
  const content = text.trim(); question.value = ''; error.value = ''; pending.value = true
- if (!current.value) { const c: Conversation = { id: crypto.randomUUID(), title: summarizeTitle(content), date: new Date().toISOString(), agentId: agentId.value, messages: [] }; conversations.value.unshift(c); currentId.value = c.id }
- const c = current.value!; c.messages.push({ id: crypto.randomUUID(), role: 'user', content, sources: [] }); router.push('/chat'); controller = new AbortController()
+ if (!current.value) { const c: Conversation = { id: uuidv4(), title: summarizeTitle(content), date: new Date().toISOString(), agentId: agentId.value, messages: [] }; conversations.value.unshift(c); currentId.value = c.id }
+ const c = current.value!; c.messages.push({ id: uuidv4(), role: 'user', content, sources: [] }); router.push('/chat'); controller = new AbortController()
  const history = c.messages.slice(c.contextSince ?? 0, -1).map(m => ({ role: m.role, content: m.content }))
  const ctx = buildChatContext(history)
  if (ctx.truncated) c.contextSince = c.messages.length - 1 // window overflowed — start counting fresh from this message
- try { const response = await askKnowledge({ question: content, agentId: agentId.value, title: c.title, context: ctx.context }, controller.signal); c.messages.push({ id: crypto.randomUUID(), role: 'assistant', content: response.answer, sources: response.sources }) }
+ try { const response = await askKnowledge({ question: content, agentId: agentId.value, title: c.title, context: ctx.context }, controller.signal); c.messages.push({ id: uuidv4(), role: 'assistant', content: response.answer, sources: response.sources }) }
  catch (e) {
   // A user-initiated cancel (New conversation / switching chats while pending) aborts the
   // request on purpose — nothing went wrong, so don't surface an error or restore the question.

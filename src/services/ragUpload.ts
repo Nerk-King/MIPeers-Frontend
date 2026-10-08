@@ -4,6 +4,9 @@ import { isLive } from './liveMode'
 
 export interface UploadResult { fileName: string; path: string }
 
+/** Descriptive fields stored alongside the document — product/folder/agent place it in the knowledge base, summary describes it. */
+export interface RagUploadMeta { product: string; folder: string; summary: string; agent: string }
+
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts).
 const DEFAULT_UPLOAD_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/rest.w' : 'https://mn2503.ils.mip.co.za/web_pvtken/rest.w'
 const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_ENDPOINT || DEFAULT_UPLOAD_ENDPOINT
@@ -41,7 +44,7 @@ export function inferContentType(file: File): string {
  * it just tells the AppServer where to read a file it can already see on the shared drive. The
  * caller is responsible for actually placing the file at that path first (see services/localFs.ts).
  */
-export async function ragUpload(localBasePath: string, file: File): Promise<UploadResult> {
+export async function ragUpload(localBasePath: string, file: File, meta: RagUploadMeta): Promise<UploadResult> {
  const filePath = toServerFilePath(localBasePath, file.name)
  if (!isLive.value) {
   await new Promise(resolve => setTimeout(resolve, 600))
@@ -55,6 +58,10 @@ export async function ragUpload(localBasePath: string, file: File): Promise<Uplo
   pcFilePath: filePath,
   pcFileName: file.name,
   pcContentType: inferContentType(file),
+  pcProduct: meta.product.trim(),
+  pcFolder: meta.folder.trim(),
+  pcSummary: meta.summary.trim(),
+  pcAgent: meta.agent.trim(),
  })
  const timeout = withTimeout(undefined, 45000)
  try {

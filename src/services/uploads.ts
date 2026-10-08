@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import { ref } from 'vue'
 import type { KnowledgeDocument } from '../data'
 
@@ -64,7 +65,7 @@ export function createResource(source: UploadSource, name: string, content: stri
  if (!name.trim()) throw new Error('Give this resource a title.')
  if (!content.trim()) throw new Error('Add content before saving.')
  if (content.length > MAX_TEXT_LENGTH) throw new Error('Keep each text resource under 200,000 characters.')
- return { id: 'upload-' + crypto.randomUUID(), source, name: name.trim().slice(0, 200), content, createdAt: new Date().toISOString(), path: sourceLabels[source], ...extra }
+ return { id: 'upload-' + uuidv4(), source, name: name.trim().slice(0, 200), content, createdAt: new Date().toISOString(), path: sourceLabels[source], ...extra }
 }
 
 export async function fileResources(files: File[], source: 'file' | 'folder'): Promise<LocalResource[]> {

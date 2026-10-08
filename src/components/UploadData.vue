@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { v4 as uuidv4 } from 'uuid'
 import { computed, ref, watch } from 'vue'
 import Icon from './Icon.vue'
 import { createResource, fileResources, linkResources, sitemapResources, saveResources, MAX_BATCH_SIZE, MAX_FILE_SIZE, MAX_RESOURCES, type UploadSource } from '../services/uploads'
@@ -15,7 +16,7 @@ const sources: { id: UploadSource; label: string; icon: string; description: str
 const source = ref<UploadSource>('file')
 const files = ref<File[]>([])
 const title = ref(''), text = ref(''), links = ref(''), sitemap = ref('')
-const pairs = ref([{ id: crypto.randomUUID(), question: '', answer: '' }])
+const pairs = ref([{ id: uuidv4(), question: '', answer: '' }])
 const error = ref(''), success = ref(''), busy = ref(false), dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null), folderInput = ref<HTMLInputElement | null>(null)
 const totalBytes = computed(() => files.value.reduce((sum, file) => sum + file.size, 0))
@@ -29,7 +30,7 @@ const canSave = computed(() => {
  return pairs.value.every(pair => pair.question.trim() && pair.answer.trim())
 })
 watch(source, () => { error.value = ''; success.value = ''; files.value = [] })
-function addPair() { pairs.value.push({ id: crypto.randomUUID(), question: '', answer: '' }) }
+function addPair() { pairs.value.push({ id: uuidv4(), question: '', answer: '' }) }
 function formatSize(size: number) { return size >= 1024 * 1024 ? (size / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.ceil(size / 1024)) + ' KB' }
 function stageFiles(incoming: File[]) {
  error.value = ''; success.value = ''
@@ -81,7 +82,7 @@ async function submit() {
   if (source.value === 'links') links.value = ''
   if (source.value === 'sitemap') sitemap.value = ''
   if (source.value === 'text') { title.value = ''; text.value = '' }
-  if (source.value === 'qa') pairs.value = [{ id: crypto.randomUUID(), question: '', answer: '' }]
+  if (source.value === 'qa') pairs.value = [{ id: uuidv4(), question: '', answer: '' }]
   emit('saved', resources.length)
  } catch (e) { error.value = e instanceof Error ? e.message : 'Could not save these resources. Please try again.' }
  finally { busy.value = false; emit('busy', false) }
