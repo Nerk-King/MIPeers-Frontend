@@ -1,0 +1,14 @@
+{
+ "manifest_version": 3,
+ "name": "MiPeers Page Assistant (PoC)",
+ "version": "0.1.0",
+ "description": "Ask MiPeers about the page you're viewing. Proof-of-concept — demo/mock answers only, not wired to the real knowledge service yet.",
+ "action": {
+  "default_popup": "popup.html",
+  "default_title": "MiPeers",
+  "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+ },
+ "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
+ "permissions": ["activeTab", "scripting", "storage"],
+ "host_permissions": ["https://mn2503.ils.mip.co.za/*"]
+}

@@ -16,6 +16,7 @@ import { askKnowledge, buildChatContext, deleteRagHistory, fetchRagHistory, DEFA
 import { summarizeTitle, uniqueTitle } from './services/title'
 import { currentUserName, sessionToken, signOut } from './services/auth'
 import { isLive, toggleLive } from './services/liveMode'
+import { startIdleWatcher } from './services/idleTimeout'
 type Message = { id: string; role: 'user' | 'assistant'; content: string; sources: { name: string; page: string }[]; liked?: boolean; saved?: boolean }
 // datasetObj is only set for live-mode chats loaded from ilDecision:fetchRagHistory.
 type Conversation = { id: string; datasetObj?: number; title: string; date: string; agentId: string; messages: Message[] }
@@ -113,7 +114,7 @@ watch(preferences, value => { try { localStorage.setItem('mipeers-preferences', 
 watch(() => route.path, path => { search.value = ''; mobileNav.value = false; notifications.value = false; if (path === '/home') { controller?.abort(); currentId.value = '' } })
 watch(() => current.value?.messages.length, async () => { await nextTick(); messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: 'smooth' }) })
 function notify(text: string) { toast.value = text; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.value = '', 3200) }
-onMounted(() => { loadKnowledgeBase().catch(() => notify('Unable to load the library. Open Knowledge Library to try again.')); loadHistory() })
+onMounted(() => { loadKnowledgeBase().catch(() => notify('Unable to load the library. Open Knowledge Library to try again.')); loadHistory(); startIdleWatcher(() => router.push('/login')) })
 function closeUpload() { if (!uploadBusy.value) uploadOpen.value = false }
 const downloadPending = ref(false)
 async function downloadRemote(doc: KnowledgeDocument) {

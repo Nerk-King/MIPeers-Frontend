@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <title>MiPeers</title>
+ <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+ <div class="popup-shell">
+  <header>
+   <div class="brand">
+    <img src="icon48.png" alt="" class="logo">
+    <a href="http://il-lnx1:8080/mipeers/#/login" target="_blank" rel="noopener noreferrer" class="brand-link">MiPeers</a>
+   </div>
+   <div class="header-actions">
+    <button id="theme-toggle" class="icon-toggle" aria-label="Switch to light theme">
+     <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+     <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    </button>
+    <button id="live-toggle" class="live-toggle" aria-pressed="false">
+     <span class="live-toggle-dot"></span><span id="live-toggle-label">Demo</span>
+    </button>
+   </div>
+  </header>
+
+  <section id="login-view">
+   <p class="muted">Sign in to ask your knowledge base a question.</p>
+   <input id="username" type="text" placeholder="Username" autocomplete="username">
+   <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+   <button id="login-submit">Sign in</button>
+   <p class="error" id="login-error"></p>
+  </section>
+
+  <section id="main-view" hidden>
+   <div class="session-row">
+    <span id="session-name" class="muted"></span>
+    <button id="sign-out" class="link-button">Sign out</button>
+   </div>
+
+   <div class="config-group">
+    <h3 class="card-heading">Context</h3>
+    <label class="include-row">
+     <input type="checkbox" id="include-page" checked>
+     Include this page's info
+    </label>
+    <div class="page-info" id="page-info">Reading current page…</div>
+
+    <label class="include-row">
+     <input type="checkbox" id="include-screenshot">
+     Include a screenshot of this page
+    </label>
+    <div class="screenshot-preview" id="screenshot-preview" hidden></div>
+   </div>
+
+   <div class="chat-card">
+    <h3 class="card-heading">Chat</h3>
+    <div class="chat-log" id="chat-log"></div>
+
+    <textarea id="question" rows="2" placeholder="Ask your knowledge base…"></textarea>
+    <button id="ask">Ask</button>
+
+    <p class="error" id="ask-error"></p>
+   </div>
+  </section>
+ </div>
+
+ <script type="module" src="popup.js"></script>
+</body>
+</html>

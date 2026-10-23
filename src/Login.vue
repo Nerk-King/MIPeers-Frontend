@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next'
 import heroImage from './Mipeers logo.jpg'
 import { signIn } from './services/auth'
 import { isLive, toggleLive } from './services/liveMode'
+import { idleExpired, resetIdleTimer } from './services/idleTimeout'
 import AgentAvatar from './components/AgentAvatar.vue'
 const router = useRouter()
 const username = ref('')
@@ -12,12 +13,16 @@ const password = ref('')
 const showPassword = ref(false)
 const error = ref('')
 const pending = ref(false)
+onMounted(() => {
+ if (idleExpired.value) { error.value = "You were signed out after an hour of inactivity. Please sign in again."; idleExpired.value = false }
+})
 async function submit() {
  if (pending.value) return
  error.value = ''
  pending.value = true
  try {
   await signIn({ username: username.value, password: password.value })
+  resetIdleTimer()
   router.push('/home')
  } catch (e) {
   error.value = e instanceof Error ? e.message : 'Unable to sign in right now. Please try again.'
