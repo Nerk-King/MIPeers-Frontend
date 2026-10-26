@@ -18,7 +18,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ color: string; icon: string; name: string; pending: boolean; lastAnswer: string }>()
-const emit = defineEmits<{ unsupported: []; send: [question: string] }>()
+const emit = defineEmits<{ unsupported: [reason: 'insecure' | 'unsupported']; send: [question: string] }>()
 
 const supported = typeof window !== 'undefined' && !!window.documentPictureInPicture
 const floating = ref(false)
@@ -94,7 +94,13 @@ async function openOverlay() {
 
 function toggle() {
  if (floating.value) { pipWindow?.close(); return }
- if (!supported) { emit('unsupported'); return }
+ if (!supported) {
+  // window.documentPictureInPicture is undefined either way, but the fix is completely different
+  // depending on which: an insecure context (plain HTTP on a non-localhost host) just needs HTTPS
+  // or localhost, while an actually-unsupported browser needs Chrome/Edge 116+.
+  emit('unsupported', window.isSecureContext ? 'unsupported' : 'insecure')
+  return
+ }
  openOverlay()
 }
 </script>

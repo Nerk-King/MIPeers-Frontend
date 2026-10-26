@@ -68,6 +68,13 @@ Two checkboxes above the chat log control what rides along with a question, both
   viewport, not the full scrollable page — stitching together a full-page screenshot would need
   extra scroll-and-capture logic this doesn't do yet.
 
+By default, both boxes reset (unchecked, screenshot/page-info preview cleared) after every question
+— to optimize requests, context is one-shot rather than silently resent (and going stale) on
+follow-up questions unless deliberately re-ticked. A third checkbox, **"Always send this with every
+question"**, flips that: when it's on, both boxes stay checked across questions instead of resetting
+(`config.js`'s `getAlwaysIncludeContext()`/`setAlwaysIncludeContext()`, persisted like the other
+toggles; `popup.js`'s `resetContextAfterAsk()` is the one place that checks it).
+
 Both fields are arrays, one element each for now since this only ever captures one page's info and
 one screenshot at a time — but sent as LONGCHAR (JSON-stringified text, not native nested JSON in
 the request body), same convention as `opcDocuments` elsewhere in this codebase (`knowledge.ts`):
@@ -90,8 +97,10 @@ b64encoded }` — `content_type` is always `"image/png"` here since that's the f
   reopen as a side effect of that, and explicitly cleared on sign-out/mode-switch too
   (`popup.js`'s `clearChatLog()`). No multi-turn conversation either way — each question is
   independent, no history is kept or sent.
-- No source citations in the Live answer yet (`rq.opcResources`/`opcPageNumber` aren't parsed here,
-  unlike the main app).
+- One source citation per answer (`rag.js`'s `liveAnswer()` parses `rq.opcResources`/
+  `opcPageNumber`, same comma-delimited/position-aligned fields the main app uses, but only keeps
+  the first entry — the main app shows the full list, this popup shows just one). Demo mode shows a
+  canned source too, so the citation UI can be checked without Live mode.
 
 ## Icons
 

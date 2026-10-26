@@ -1,6 +1,6 @@
 import { getSession, clearSession, login } from './auth.js'
-import { askKnowledge } from './rag.js'
-import { isLive, setLive, getTheme, setTheme } from './config.js'
+import { askKnowledge, friendlyAskError } from './rag.js'
+import { isLive, setLive, getTheme, setTheme, getAlwaysIncludeContext, setAlwaysIncludeContext } from './config.js'
 
 const themeToggle = document.getElementById('theme-toggle')
 const liveToggle = document.getElementById('live-toggle')
@@ -17,6 +17,7 @@ const pageInfoEl = document.getElementById('page-info')
 const includePageEl = document.getElementById('include-page')
 const includeScreenshotEl = document.getElementById('include-screenshot')
 const screenshotPreviewEl = document.getElementById('screenshot-preview')
+const alwaysIncludeEl = document.getElementById('always-include')
 const questionEl = document.getElementById('question')
 const askButton = document.getElementById('ask')
 const askError = document.getElementById('ask-error')
@@ -167,6 +168,22 @@ async function updateScreenshotPreview() {
 
 includeScreenshotEl.addEventListener('change', updateScreenshotPreview)
 
+alwaysIncludeEl.checked = getAlwaysIncludeContext()
+alwaysIncludeEl.addEventListener('change', () => {
+ setAlwaysIncludeContext(alwaysIncludeEl.checked)
+})
+
+// Optimizes requests: unless "always send" is on, each question's page-info/screenshot context is
+// one-shot — included once, then both boxes reset so the next question doesn't silently resend the
+// same (increasingly stale) capture unless the user deliberately re-ticks it.
+async function resetContextAfterAsk() {
+ if (alwaysIncludeEl.checked) return
+ includePageEl.checked = false
+ pageInfoEl.hidden = true
+ includeScreenshotEl.checked = false
+ await updateScreenshotPreview()
+}
+
 // textContent throughout — question is user-typed, never trust it as markup.
 function addUserBubble(text) {
  const bubble = document.createElement('div')
@@ -199,7 +216,24 @@ function addAssistantBubble() {
  return { bubble, body }
 }
 
-askButton.addEventListener('click', async () => {
+// One source only (unlike the main app's full source list) — matches rag.js only ever returning
+// the first opcResources/opcPageNumber entry.
+function addSourceBadge(bubble, source) {
+ const badge = document.createElement('div')
+ badge.className = 'bubble-source'
+ const number = document.createElement('span')
+ number.className = 'source-number'
+ number.textContent = '1'
+ const name = document.createElement('span')
+ name.className = 'source-name'
+ name.textContent = source.name
+ const page = document.createElement('small')
+ page.textContent = `Page ${source.page}`
+ badge.append(number, name, page)
+ bubble.append(badge)
+}
+
+async function askQuestion() {
  const question = questionEl.value.trim()
  if (!question) return
  askError.textContent = ''
@@ -212,15 +246,26 @@ askButton.addEventListener('click', async () => {
   const extraContextImages = includeScreenshotEl.checked && screenshotDataUrl
    ? screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '')
    : null
-  const answer = await askKnowledge(question, extraContext, extraContextImages)
+  const result = await askKnowledge(question, extraContext, extraContextImages)
   body.className = 'bubble-body'
-  body.textContent = answer
+  body.textContent = result.answer
+  if (result.source) addSourceBadge(bubble, result.source)
  } catch (e) {
   bubble.remove()
-  askError.textContent = e instanceof Error ? e.message : 'Something went wrong. Please try again.'
+  askError.textContent = friendlyAskError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
  } finally {
   askButton.disabled = false
   chatLogEl.scrollTop = chatLogEl.scrollHeight
+  await resetContextAfterAsk()
+ }
+}
+
+askButton.addEventListener('click', askQuestion)
+// Enter submits (matching the main app's composer); Shift+Enter still inserts a newline.
+questionEl.addEventListener('keydown', e => {
+ if (e.key === 'Enter' && !e.shiftKey) {
+  e.preventDefault()
+  askQuestion()
  }
 })
 

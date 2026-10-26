@@ -25,3 +25,17 @@ export function getTheme() {
 export function setTheme(value) {
  localStorage.setItem(THEME_KEY, value)
 }
+
+const ALWAYS_INCLUDE_CONTEXT_KEY = 'mipeers-ext-always-context'
+
+// Default (false/unset) — popup.js unchecks "include page info"/"include screenshot" after every
+// question so stale, already-sent context isn't silently resent on the next one. Turning this on
+// keeps both checked across questions instead, for someone who wants every question in a session
+// to carry the same context without re-ticking it each time.
+export function getAlwaysIncludeContext() {
+ return localStorage.getItem(ALWAYS_INCLUDE_CONTEXT_KEY) === 'true'
+}
+
+export function setAlwaysIncludeContext(value) {
+ localStorage.setItem(ALWAYS_INCLUDE_CONTEXT_KEY, String(value))
+}

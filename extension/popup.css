@@ -202,6 +202,11 @@ header {
  font-size: 11.5px;
  color: var(--muted);
 }
+.always-row {
+ margin-top: 4px;
+ padding-top: 10px;
+ border-top: 1px solid var(--border);
+}
 /* Matching labeled cards (--panel, one step up from --surface) so config and chat read as two
    distinct sections rather than everything floating in one column. */
 .config-group, .chat-card {
@@ -289,3 +294,27 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .bubble-body.thinking { display: flex; align-items: center; gap: 6px; color: var(--accent-soft); }
 .bubble-body.thinking .dots { animation: bubble-pulse 1.2s infinite; letter-spacing: 3px; }
 @keyframes bubble-pulse { 50% { opacity: .2; } }
+.bubble-source {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-top: 8px;
+ padding-top: 8px;
+ border-top: 1px solid var(--border);
+ font-size: 11px;
+}
+.bubble-source .source-number {
+ flex-shrink: 0;
+ width: 16px;
+ height: 16px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ border-radius: 50%;
+ background: var(--accent-from);
+ color: #fff;
+ font-size: 9px;
+ font-weight: 700;
+}
+.bubble-source .source-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bubble-source small { flex-shrink: 0; color: var(--muted); }

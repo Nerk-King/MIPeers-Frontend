@@ -18,6 +18,18 @@ export const CONTEXT_CHAR_LIMIT = 10000
 export const DEFAULT_MAX_RESULTS = 5
 
 /**
+ * Some backend errors (e.g. "REST call failed: ...") are implementation details a user can't act
+ * on — swap them for a message that tells them what to actually do instead. Other errors here
+ * (e.g. "Incorrect username or password.", "The knowledge service is unavailable.") are already
+ * hand-written to be user-facing, so they pass through unchanged.
+ */
+export function friendlyAskError(message: string): string {
+ return /rest call failed/i.test(message)
+  ? 'Something went wrong processing that question. Please try again or rephrase it.'
+  : message
+}
+
+/**
  * Converts chat history into the [{author, text}] shape ragAsk expects for pcContext. Always
  * includes the full history passed in — no truncation or resetting. Measured as plain string
  * length now that pcContext travels in a JSON body rather than a URL. Exported so the UI can show
@@ -82,6 +94,14 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
   if (!response.ok) throw new Error('The knowledge service is unavailable. Please try again.')
   if (typeof rq.opcResponse !== 'string') throw new Error('The knowledge service returned an invalid response.')
+  // Unlike rqErrorMessage, this kind of failure comes back disguised as a normal answer — opcResponse
+  // itself holds "REST call failed: <actual message>" instead of the question's real answer, so it
+  // has to be caught here rather than relying on the rqErrorMessage/!response.ok checks above.
+  const restFailureMatch = rq.opcResponse.match(/^REST call failed:\s*(.*)$/is)
+  if (restFailureMatch) {
+   console.error('[MiPeers] ragAsk opcResponse reported a REST failure:', restFailureMatch[1].trim())
+   throw new Error(friendlyAskError(rq.opcResponse))
+  }
 
   const names = typeof rq.opcResources === 'string' && rq.opcResources ? rq.opcResources.split(',').map(s => s.trim()).filter(Boolean) : []
   const pages = typeof rq.opcPageNumber === 'string' ? rq.opcPageNumber.split(',').map(s => s.trim()) : []

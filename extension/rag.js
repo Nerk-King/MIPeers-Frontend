@@ -39,12 +39,20 @@ async function demoAnswer(question, extraContext, extraContextImages) {
  if (extraContext) notes.push('page info included')
  if (extraContextImages) notes.push('a screenshot included')
  const suffix = notes.length ? ` (${notes.join(', ')})` : ''
- return new Promise(resolve => setTimeout(() => resolve(
-  `Demo answer for "${question}"${suffix}. Turn on Live mode to get a grounded answer from the real knowledge service.`
- ), 600))
+ await new Promise(resolve => setTimeout(resolve, 600))
+ return {
+  answer: `Demo answer for "${question}"${suffix}. Turn on Live mode to get a grounded answer from the real knowledge service.`,
+  // A canned source, so the citation UI can be checked without Live mode too.
+  source: { name: 'Sample Document.pdf', page: '1' },
+ }
 }
 
-/** Real ilDecision:ragAsk call — same body shape as src/services/rag.ts's askKnowledge(), plus the two extra-context fields. */
+/**
+ * Real ilDecision:ragAsk call — same body shape as src/services/rag.ts's askKnowledge(), plus the
+ * two extra-context fields. opcResources/opcPageNumber are comma-delimited lists, position-aligned
+ * with each other (same as the main app) — only the first entry is kept, since this only cites one
+ * source, unlike the main app's full source list.
+ */
 async function liveAnswer(question, extraContext, extraContextImages) {
  const session = await getSession()
  if (!session) throw new Error('Not signed in.')
@@ -57,9 +65,35 @@ async function liveAnswer(question, extraContext, extraContextImages) {
  if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
  if (!response.ok) throw new Error('The knowledge service is unavailable. Please try again.')
  if (typeof rq.opcResponse !== 'string') throw new Error('The knowledge service returned an invalid response.')
- return rq.opcResponse
+ // Unlike rqErrorMessage, this kind of failure comes back disguised as a normal answer — opcResponse
+ // itself holds "REST call failed: <actual message>" instead of the question's real answer, so it
+ // has to be caught here rather than relying on the rqErrorMessage/!response.ok checks above.
+ const restFailureMatch = rq.opcResponse.match(/^REST call failed:\s*(.*)$/is)
+ if (restFailureMatch) {
+  console.error('[MiPeers PoC] ragAsk opcResponse reported a REST failure:', restFailureMatch[1].trim())
+  throw new Error(friendlyAskError(rq.opcResponse))
+ }
+
+ const firstName = typeof rq.opcResources === 'string' ? rq.opcResources.split(',')[0]?.trim() : ''
+ const firstPage = typeof rq.opcPageNumber === 'string' ? rq.opcPageNumber.split(',')[0]?.trim() : ''
+ const source = firstName ? { name: firstName, page: firstPage || '—' } : null
+
+ return { answer: rq.opcResponse, source }
 }
 
 export async function askKnowledge(question, extraContext, extraContextImages) {
  return isLive() ? liveAnswer(question, extraContext, extraContextImages) : demoAnswer(question, extraContext, extraContextImages)
+}
+
+/**
+ * Some backend errors (e.g. "REST call failed: ...") are implementation details a user can't act
+ * on — swap them for a message that tells them what to actually do instead. Other errors here
+ * (e.g. "Not signed in.", "The knowledge service is unavailable.") are already hand-written to be
+ * user-facing, so they pass through unchanged. Same rule as the main app's friendlyAskError() in
+ * src/services/rag.ts.
+ */
+export function friendlyAskError(message) {
+ return /rest call failed/i.test(message)
+  ? 'Something went wrong processing that question. Please try again or rephrase it.'
+  : message
 }
