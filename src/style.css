@@ -100,4 +100,21 @@
 .client-chip svg { color: #a995ff; }
 .client-chip button { display: inline-flex; padding: 2px; border-radius: 4px; color: #9a8fc0; }
 .client-chip button:hover:not(:disabled) { background: #36295a; color: #fff; }
+/* MultiSelect (components/MultiSelect.vue): the menu reuses .agent-options/.client-options. */
+.multi-select { position: relative; min-width: 0; }
+.ms-menu { padding: 6px; font-weight: 400; }
+.ms-list { max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #37415c transparent; }
+.ms-list > button > span { flex: 1; min-width: 0; }
+.ms-search { display: flex; align-items: center; gap: 8px; margin: 2px 2px 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #0c1625; color: #78879f; }
+.ms-search input { width: 100%; min-width: 0; font-size: 12px; }
+.ms-search input:focus-visible { outline: none; }
+.ms-search:focus-within { border-color: #9c81ff; }
+.ms-empty { margin: 0; padding: 12px; color: var(--muted); font-size: 12px; }
+.ms-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 40px; padding: 5px 4px 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-weight: 400; cursor: pointer; }
+.ms-field.open { border-color: #9c81ff; }
+.ms-field.disabled { opacity: .6; cursor: not-allowed; }
+.ms-field .client-chip { font-size: 12px; }
+.ms-placeholder { color: #71809a; padding-left: 4px; }
+.ms-toggle { display: inline-flex; margin-left: auto; padding: 5px; border-radius: 6px; color: #97a6be; }
+.multi-select-field .ms-menu { left: 0; right: 0; min-width: 0; top: calc(100% + 6px); }
 @media (max-width: 720px) { .client-select > span { max-width: 110px; } .client-options { left: auto; right: 0; min-width: 0; width: max-content; max-width: calc(100vw - 24px); } .client-chips { padding: 10px 10px 0; } }

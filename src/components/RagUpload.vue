@@ -2,6 +2,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './Icon.vue'
+import MultiSelect from './MultiSelect.vue'
 import { fetchRagLabels, ragUpload, type RagLabels } from '../services/ragUpload'
 import { isLive } from '../services/liveMode'
 
@@ -18,12 +19,14 @@ const dragging = ref(false)
 const product = ref('')
 const folder = ref('')
 const agents = ref<string[]>([])
-// Products, their folders and the agents all come from ilDecision:fetchRagLabelList; the folder
+const clients = ref<string[]>([])
+// Products, their folders, the agents and the clients all come from ilDecision:fetchRagLabelList; the folder
 // list follows whichever product is chosen.
 const labels = ref<RagLabels>({ products: {}, agents: [], clients: [] })
 const labelsState = ref<'loading' | 'ready' | 'error'>('loading')
 const labelsError = ref('')
 const agentOptions = computed(() => labels.value.agents)
+const clientOptions = computed(() => labels.value.clients)
 const productOptions = computed(() => Object.keys(labels.value.products))
 const folderOptions = computed(() => labels.value.products[product.value] ?? [])
 watch(product, () => { if (!folderOptions.value.includes(folder.value)) folder.value = '' })
@@ -64,7 +67,7 @@ async function uploadAll() {
   if (entry.status === 'done') { succeeded++; continue }
   entry.status = 'uploading'; entry.error = undefined
   try {
-   await ragUpload(entry.file, { product: product.value, folder: folder.value, summary: entry.summary, agent: agentOptions.value.filter(option => agents.value.includes(option)).join(',') })
+   await ragUpload(entry.file, { product: product.value, folder: folder.value, summary: entry.summary, agent: agentOptions.value.filter(option => agents.value.includes(option)).join(','), clients: clientOptions.value.filter(option => clients.value.includes(option)).join(',') })
    entry.status = 'done'
    succeeded++
   } catch (e) {
@@ -94,6 +97,7 @@ async function uploadAll() {
     <label class="rag-upload-field"><span>Product <small>(optional)</small></span><select v-model="product" :disabled="busy"><option value="">No product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
     <label class="rag-upload-field"><span>Folder <small>(optional)</small></span><select v-model="folder" :disabled="busy || !product"><option value="">{{ product ? 'No folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
     <fieldset v-if="agentOptions.length" class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
+    <div v-if="clientOptions.length" class="rag-upload-field rag-upload-clients"><span>Client <small>(optional)</small></span><MultiSelect v-model="clients" variant="field" :options="clientOptions" noun="clients" placeholder="No client" label="Clients" :disabled="busy"/></div>
    </div>
 
    <div :class="['upload-dropzone', { dragging }]" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="dropped">
@@ -143,6 +147,8 @@ async function uploadAll() {
 .rag-upload-field > span small, .rag-upload-agents legend small { color: var(--muted); font-weight: 400; }
 .rag-upload-agents label { display: inline-flex; align-items: center; gap: 7px; margin: 8px 16px 0 0; font-weight: 400; cursor: pointer; }
 .rag-upload-agents input { width: auto; padding: 0; accent-color: var(--purple); }
+/* Client names are long, so the client picker takes its own full-width row. */
+.rag-upload-clients { grid-column: 1 / -1; }
 .rag-upload-summary { padding: 7px 10px; font-size: 11px; }
 .rag-upload-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); text-align: center; }
 .rag-upload-actions > span { color: var(--muted); font-size: 11px; }

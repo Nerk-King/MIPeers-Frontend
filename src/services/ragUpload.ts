@@ -4,8 +4,8 @@ import { isLive } from './liveMode'
 
 export interface UploadResult { fileName: string }
 
-/** Descriptive fields stored alongside the document — product/folder/agent place it in the knowledge base, summary describes it. */
-export interface RagUploadMeta { product: string; folder: string; summary: string; agent: string }
+/** Descriptive fields stored alongside the document — product/folder/agent/clients place it in the knowledge base, summary describes it. agent and clients are comma-separated lists. */
+export interface RagUploadMeta { product: string; folder: string; summary: string; agent: string; clients: string }
 
 // See the matching comment in services/auth.ts: dev runs through Vite's /ils-api proxy (vite.config.ts).
 const DEFAULT_UPLOAD_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/rest.w' : 'https://mn2503.ils.mip.co.za/web_pvtken/rest.w'
@@ -130,6 +130,7 @@ export async function ragUpload(file: File, meta: RagUploadMeta): Promise<Upload
   pcFolder: meta.folder.trim(),
   pcSummary: meta.summary.trim(),
   pcAgent: meta.agent.trim(),
+  pcClients: meta.clients.trim(),
  }
  // Larger than the other calls' 45s: the whole file goes up in this one request.
  const timeout = withTimeout(undefined, 120000)

@@ -82,3 +82,5 @@
 :root[data-theme="light"] :is(.client-chip svg, .client-chip button, .client-select > svg:first-child) { color: #6b42b3; }
 :root[data-theme="light"] .client-chip button:hover:not(:disabled) { background: #e3d8f7; color: #3f2370; }
 :root[data-theme="light"] .client-chips { color: var(--light-secondary); }
+:root[data-theme="light"] .ms-search { background: var(--light-surface); border-color: var(--line); color: var(--light-secondary); }
+:root[data-theme="light"] :is(.ms-placeholder, .ms-toggle, .ms-empty) { color: var(--light-secondary); }
