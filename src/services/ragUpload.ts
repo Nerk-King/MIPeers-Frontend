@@ -57,7 +57,7 @@ async function requestRagLabels(): Promise<RagLabels> {
   try { data = await response.json() } catch { data = null }
   const rq = data?.rqResponse ?? {}
   if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
-  if (!response.ok || rq.oplSuccess === false) throw new Error('Could not load the product and folder lists. Please try again.')
+  if (!response.ok || rq.oplSuccess === false) throw new Error('Could not load the label sets. Please try again.')
 
   const labels: RagLabels = { products: {}, agents: [], clients: [] }
   for (const set of rq.dsLabelSet?.ttLabelSet ?? []) {

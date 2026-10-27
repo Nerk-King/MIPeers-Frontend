@@ -39,7 +39,7 @@ async function loadLabels() {
   labels.value = await fetchRagLabels()
   labelsState.value = 'ready'
  } catch (e) {
-  labelsError.value = e instanceof Error ? e.message : 'Could not load the product and folder lists.'
+  labelsError.value = e instanceof Error ? e.message : 'Could not load the label sets.'
   labelsState.value = 'error'
  }
 }
@@ -91,11 +91,11 @@ async function uploadAll() {
    <p class="subtle rag-upload-intro">Add documents for your team to find answers from.</p>
    <div v-if="!isLive" class="rag-upload-note"><Icon name="Shield" :size="18"/><span><strong>Demo mode</strong>The real ingestion call is simulated. Switch to Live at the top of the screen to use the real service.</span></div>
 
-   <p v-if="labelsState === 'loading'" class="subtle rag-upload-labels-status">Loading products and folders…</p>
+   <p v-if="labelsState === 'loading'" class="subtle rag-upload-labels-status">Loading label sets…</p>
    <div v-else-if="labelsState === 'error'" class="rag-upload-labels-error" role="alert"><span>{{ labelsError }}</span><button type="button" class="outline-button" @click="loadLabels">Try again</button></div>
    <div v-else class="rag-upload-fields">
-    <label class="rag-upload-field"><span>Product <small>(optional)</small></span><select v-model="product" :disabled="busy"><option value="">No product</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
-    <label class="rag-upload-field"><span>Folder <small>(optional)</small></span><select v-model="folder" :disabled="busy || !product"><option value="">{{ product ? 'No folder' : 'Choose a product first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <label class="rag-upload-field"><span>Label set <small>(optional)</small></span><select v-model="product" :disabled="busy"><option value="">No label set</option><option v-for="option in productOptions" :key="option" :value="option">{{ option }}</option></select></label>
+    <label class="rag-upload-field"><span>Label <small>(optional)</small></span><select v-model="folder" :disabled="busy || !product"><option value="">{{ product ? 'No label' : 'Choose a label set first' }}</option><option v-for="option in folderOptions" :key="option" :value="option">{{ option }}</option></select></label>
     <fieldset v-if="agentOptions.length" class="rag-upload-field rag-upload-agents" :disabled="busy"><legend>Agent <small>(optional)</small></legend><label v-for="option in agentOptions" :key="option"><input v-model="agents" type="checkbox" :value="option"/>{{ option }}</label></fieldset>
     <div v-if="clientOptions.length" class="rag-upload-field rag-upload-clients"><span>Client <small>(optional)</small></span><MultiSelect v-model="clients" variant="field" :options="clientOptions" noun="clients" placeholder="No client" label="Clients" :disabled="busy"/></div>
    </div>
