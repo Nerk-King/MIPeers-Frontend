@@ -181,10 +181,12 @@ export async function downloadKnowledgeDocument(doc: KnowledgeDocument, signal?:
 // It's fetched once per session and reused; refresh with loadKnowledgeBase({ refresh: true }).
 const remoteTree = ref<KnowledgeNode[]>([])
 export const knowledgeStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
+/** The catch-all "General" folder: sorted last among folders, and the one top-level folder that starts collapsed. */
+export function isGeneralFolder(node: KnowledgeNode): boolean { return node.type === 'folder' && node.name.trim().toLowerCase() === 'general' }
 // Each level sorts folders before files, then alphabetically (ignoring case); a folder named
 // "General" always goes last among the folders.
 function sortTree(nodes: KnowledgeNode[]): KnowledgeNode[] {
- const rank = (node: KnowledgeNode) => node.type === 'file' ? 2 : node.name.trim().toLowerCase() === 'general' ? 1 : 0
+ const rank = (node: KnowledgeNode) => node.type === 'file' ? 2 : isGeneralFolder(node) ? 1 : 0
  return nodes
   .map(node => node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node)
   .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))

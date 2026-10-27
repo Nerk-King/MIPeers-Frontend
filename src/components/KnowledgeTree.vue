@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
-import { knowledgeStatus, libraryDocuments as docs, libraryTree as tree, loadKnowledgeBase } from '../services/knowledge'
+import { isGeneralFolder, knowledgeStatus, libraryDocuments as docs, libraryTree as tree, loadKnowledgeBase } from '../services/knowledge'
 import { sessionToken } from '../services/auth'
 import { isLive } from '../services/liveMode'
 import type { KnowledgeDocument } from '../data'
@@ -21,7 +21,7 @@ watch([isLive, sessionToken], load)
   <p v-if="knowledgeStatus === 'loading' || knowledgeStatus === 'idle'" class="tree-status"><Icon name="Sparkles" :size="14"/> Loading knowledge sources…</p>
   <p v-else-if="knowledgeStatus === 'error'" class="tree-status tree-error">Could not load the knowledge library. <button type="button" class="tree-retry" @click="load">Try again</button></p>
   <template v-else>
-   <KnowledgeTreeNode v-for="node in tree" :key="node.id" :node="node" :active="active" :documents="docs" :expanded="true" @open="emit('open', $event)"/>
+   <KnowledgeTreeNode v-for="node in tree" :key="node.id" :node="node" :active="active" :documents="docs" :expanded="!isGeneralFolder(node)" @open="emit('open', $event)"/>
   </template>
  </div>
 </template>
