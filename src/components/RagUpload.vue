@@ -20,7 +20,7 @@ const folder = ref('')
 const agents = ref<string[]>([])
 // Products, their folders and the agents all come from ilDecision:fetchRagLabelList; the folder
 // list follows whichever product is chosen.
-const labels = ref<RagLabels>({ products: {}, agents: [] })
+const labels = ref<RagLabels>({ products: {}, agents: [], clients: [] })
 const labelsState = ref<'loading' | 'ready' | 'error'>('loading')
 const labelsError = ref('')
 const agentOptions = computed(() => labels.value.agents)

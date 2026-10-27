@@ -78,3 +78,7 @@
 :root[data-theme="light"] .login-error-modal { background: linear-gradient(155deg, #fff, #f3f0fc 70%); border-color: var(--line); box-shadow: 0 20px 60px #243b6526; }
 :root[data-theme="light"] .login-error-modal h3 { color: var(--light-text); }
 :root[data-theme="light"] .login-error-modal p { color: var(--light-secondary); }
+:root[data-theme="light"] .client-chip { background: #eee8fa; border-color: #d5c6ee; color: #5d409e; }
+:root[data-theme="light"] :is(.client-chip svg, .client-chip button, .client-select > svg:first-child) { color: #6b42b3; }
+:root[data-theme="light"] .client-chip button:hover:not(:disabled) { background: #e3d8f7; color: #3f2370; }
+:root[data-theme="light"] .client-chips { color: var(--light-secondary); }

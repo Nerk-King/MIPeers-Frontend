@@ -83,7 +83,7 @@ async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKno
  // The labels only shape the tree; if they can't be loaded, fall back to folders built from the documents alone.
  const [groups, labels] = await Promise.all([
   fetchRemoteGroups(signal),
-  fetchRagLabels().catch((): RagLabels => ({ products: {}, agents: [] })),
+  fetchRagLabels().catch((): RagLabels => ({ products: {}, agents: [], clients: [] })),
  ])
 
  const tree: KnowledgeNode[] = []

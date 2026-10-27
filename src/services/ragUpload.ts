@@ -11,14 +11,16 @@ export interface RagUploadMeta { product: string; folder: string; summary: strin
 const DEFAULT_UPLOAD_ENDPOINT = import.meta.env.DEV ? '/ils-api/web_pvtken/rest.w' : 'https://mn2503.ils.mip.co.za/web_pvtken/rest.w'
 const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_ENDPOINT || DEFAULT_UPLOAD_ENDPOINT
 
-/** Upload choices from ilDecision:fetchRagLabelList: each product (label set) has its own folders; the "agent" set holds the agents. */
-export interface RagLabels { products: Record<string, string[]>; agents: string[] }
+/** Upload choices from ilDecision:fetchRagLabelList: each product (label set) has its own folders; the "agent" and "client" sets hold the agents and clients, and aren't products. */
+export interface RagLabels { products: Record<string, string[]>; agents: string[]; clients: string[] }
 
 const AGENT_LABEL_SET = 'agent'
+const CLIENT_LABEL_SET = 'client'
 const DEMO_FOLDERS = ['Business Documents', 'Technical Documents', 'Testing Documents', 'Onboarding Documents']
 const DEMO_LABELS: RagLabels = {
  products: { revolvingcredit: DEMO_FOLDERS, drivecash: DEMO_FOLDERS, flexiterm: DEMO_FOLDERS },
  agents: ['Dev', 'Business'],
+ clients: ['Ubuntu Horizon Bank', 'RetireWell Umbrella Fund'],
 }
 
 type LabelSet = { LabelSetName?: string; ttLabels?: { LabelName?: string }[] }
@@ -57,12 +59,13 @@ async function requestRagLabels(): Promise<RagLabels> {
   if (typeof rq.rqErrorMessage === 'string' && rq.rqErrorMessage) throw new Error(rq.rqErrorMessage)
   if (!response.ok || rq.oplSuccess === false) throw new Error('Could not load the product and folder lists. Please try again.')
 
-  const labels: RagLabels = { products: {}, agents: [] }
+  const labels: RagLabels = { products: {}, agents: [], clients: [] }
   for (const set of rq.dsLabelSet?.ttLabelSet ?? []) {
    const name = set.LabelSetName?.trim()
    if (!name) continue
    const values = (set.ttLabels ?? []).map(label => label.LabelName?.trim() ?? '').filter(Boolean)
    if (name.toLowerCase() === AGENT_LABEL_SET) labels.agents = values
+   else if (name.toLowerCase() === CLIENT_LABEL_SET) labels.clients = values
    else labels.products[name] = values
   }
   return labels

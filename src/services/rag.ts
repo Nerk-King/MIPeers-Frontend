@@ -4,7 +4,7 @@ import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
 import { summarizeTitle } from './title'
 
-export interface RagRequest { question: string; agentId: string; title: string; context: string; filter: string; maxResults: number }
+export interface RagRequest { question: string; agentId: string; title: string; context: string; filter: string; clients: string[]; maxResults: number }
 export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
 export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number }
@@ -81,6 +81,8 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   pcTitle: request.title,
   pcContext: request.context,
   pcFilter: request.filter,
+  // Comma-separated client labels to scope the answer to (any of them); empty means all clients.
+  pcClients: request.clients.join(','),
   piTopResult: request.maxResults,
  }
  const timeout = withTimeout(signal, 45000)
