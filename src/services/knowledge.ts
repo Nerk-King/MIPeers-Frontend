@@ -72,12 +72,63 @@ async function fetchRemoteGroups(signal?: AbortSignal): Promise<RemoteProductGro
  }
 }
 
+const matchKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * ragKnowledgeBase's own `folder` field isn't a single path — it's a comma-delimited list of
+ * `label=value` pairs, e.g. "division=FBA,document-type=Technical,product=Retirewell,client=
+ * RetireWell Umbrella Fund". Each pair places the document under its OWN top-level folder (the
+ * label) and subfolder (the value) — so one document can, and often does, appear under several
+ * unrelated folders at once. The same label can even repeat with different values (e.g. three
+ * "product=" pairs), each one a separate placement. A pair with no value (e.g. "revolvingcredit=")
+ * files the document directly under that label's folder, no subfolder. An empty string has nothing
+ * to parse — those documents have no NVP-derived home at all.
+ */
+function parseFolderPairs(folder: string): { label: string; value: string }[] {
+ if (!folder.trim()) return []
+ return folder.split(',').map(pair => {
+  const eq = pair.indexOf('=')
+  return eq === -1 ? { label: pair.trim(), value: '' } : { label: pair.slice(0, eq).trim(), value: pair.slice(eq + 1).trim() }
+ }).filter(pair => pair.label)
+}
+
+/**
+ * The label (key) side of each NVP pair is always lowercase/hyphenated (e.g. "revolvingcredit",
+ * "document-type") — and in practice ilDecision:fetchRagLabelList's own label-set names are just as
+ * lowercase, so that's not actually a source of better casing. ragKnowledgeBase's own top-level
+ * product grouping (e.g. "Revolving Credit") is the one place a nicer name tends to show up. Build
+ * a lookup from whichever candidate ISN'T all-lowercase, keyed by the same ignore-case/spaces/
+ * punctuation match as folderNode() uses — not simply "whichever source came first", since that's
+ * what let an all-lowercase labels.products key win over a nicer group name before.
+ */
+function buildLabelNameMap(labels: RagLabels, groupNames: string[]): Map<string, string> {
+ const map = new Map<string, string>()
+ const consider = (name: string) => {
+  // Skip anything that isn't actually better than lowercase — otherwise an all-lowercase candidate
+  // (e.g. "client", mapped to itself) would "fill" the entry and block properLabel()'s own
+  // capitalize-first-letter fallback from ever running, since the map technically has a value.
+  if (name === name.toLowerCase()) return
+  const key = matchKey(name)
+  if (key && !map.has(key)) map.set(key, name)
+ }
+ for (const name of Object.keys(labels.products)) consider(name)
+ for (const name of groupNames) consider(name)
+ return map
+}
+
+/** A properly-cased name if one's known anywhere; otherwise just capitalize the first letter. */
+function properLabel(map: Map<string, string>, raw: string): string {
+ return map.get(matchKey(raw)) ?? (raw.charAt(0).toUpperCase() + raw.slice(1))
+}
+
 /**
  * The folder structure comes from ilDecision:fetchRagLabelList — each product (label set) is a
- * top-level folder with its labels as subfolders, shown even when empty — and each document from
- * ragKnowledgeBase is filed under its matching product/folder (matched ignoring case, spaces and punctuation, so "Revolving Credit" files under "revolvingcredit"). A
- * document whose product or folder isn't in the label list still gets a folder of its own, so
- * nothing in the knowledge base is hidden.
+ * top-level folder with its labels as subfolders, shown even when empty. Each document from
+ * ragKnowledgeBase is then filed under every label=value pair in its own `folder` field (see
+ * parseFolderPairs) — matched against the label-list folders ignoring case/spaces/punctuation, so
+ * "Revolving Credit" and "revolvingcredit" are the same folder, not two. A document with no NVP
+ * pairs to place it (an empty folder string) falls back to the response's own top-level grouping
+ * instead, so it's still visible somewhere.
  */
 async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKnowledgeBase> {
  // The labels only shape the tree; if they can't be loaded, fall back to folders built from the documents alone.
@@ -87,37 +138,55 @@ async function fetchRemoteKnowledgeBase(signal?: AbortSignal): Promise<RemoteKno
  ])
 
  const tree: KnowledgeNode[] = []
- const matchKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
  const folderNode = (parent: KnowledgeNode[], id: string, name: string): KnowledgeNode[] => {
   let node = parent.find(n => n.type === 'folder' && matchKey(n.name) === matchKey(name))
   if (!node) { node = { id, name, type: 'folder', children: [] }; parent.push(node) }
   return node.type === 'folder' ? node.children : parent
  }
+
+ // Built before any folder gets created — otherwise the very first folderNode() call for a given
+ // label (this loop, using labels.products' own raw/lowercase keys) would lock in that casing
+ // permanently, since folderNode never renames a folder it finds an existing match for.
+ const labelNames = buildLabelNameMap(labels, groups.map(g => g.product?.trim()).filter((p): p is string => !!p))
+
  for (const [product, folders] of Object.entries(labels.products)) {
-  const children = folderNode(tree, `kb-product-${product}`, product)
-  for (const folder of folders) folderNode(children, `kb-folder-${product}-${folder}`, folder)
+  const name = properLabel(labelNames, product)
+  const children = folderNode(tree, `kb-product-${name}`, name)
+  for (const folder of folders) folderNode(children, `kb-folder-${name}-${folder}`, folder)
  }
 
  const documents: KnowledgeDocument[] = []
  for (const [groupIndex, group] of groups.entries()) {
-  const product = group.product?.trim() || 'Unclassified'
-  const productChildren = folderNode(tree, `kb-product-${product}`, product)
+  const fallbackProduct = group.product?.trim() || 'Unclassified'
   for (const [fileIndex, entry] of (group.files ?? []).entries()) {
    const id = `kb-${groupIndex}-${fileIndex}`
-   const folder = entry.folder?.trim() || ''
    const failed = entry.status?.toUpperCase() === 'ERROR'
+   const pairs = parseFolderPairs(entry.folder ?? '')
+   // category/folder are just display fields for the flat search list and preview drawer — the
+   // tree placement below is independent of these. Use the first pair as the representative one.
+   const primary = pairs[0]
    documents.push({
     id,
     name: entry.fileName || 'Untitled document',
-    category: product,
-    folder,
+    category: primary ? properLabel(labelNames, primary.label) : fallbackProduct,
+    folder: primary?.value || '',
     pages: '—',
     date: '',
     content: entry.summary?.trim() || (failed ? 'This document failed to process and is not available to the agents.' : 'No summary available for this document.'),
     downloadLink: entry.downloadLink || undefined,
    })
-   const parent = folder ? folderNode(productChildren, `kb-folder-${product}-${folder}`, folder) : productChildren
-   parent.push({ id: 'kb-node-' + id, name: entry.fileName || 'Untitled document', type: 'file', documentId: id })
+
+   if (pairs.length) {
+    for (const { label, value } of pairs) {
+     const name = properLabel(labelNames, label)
+     const labelChildren = folderNode(tree, `kb-product-${name}`, name)
+     const parent = value ? folderNode(labelChildren, `kb-folder-${name}-${value}`, value) : labelChildren
+     parent.push({ id: 'kb-node-' + id, name: entry.fileName || 'Untitled document', type: 'file', documentId: id })
+    }
+   } else {
+    const productChildren = folderNode(tree, `kb-product-${fallbackProduct}`, fallbackProduct)
+    productChildren.push({ id: 'kb-node-' + id, name: entry.fileName || 'Untitled document', type: 'file', documentId: id })
+   }
   }
  }
  return { tree, documents }

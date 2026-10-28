@@ -10,6 +10,7 @@ import UploadData from './components/UploadData.vue'
 import RagUpload from './components/RagUpload.vue'
 import AgentPipButton from './components/AgentPipButton.vue'
 import Login from './Login.vue'
+import mipLogo from './assets/mip-logo.svg'
 import { agents, type KnowledgeDocument } from './data'
 import { libraryDocuments as documents, loadKnowledgeBase, downloadKnowledgeDocument } from './services/knowledge'
 import { localResources, downloadResource, removeResource } from './services/uploads'
@@ -203,7 +204,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', escape); controlle
  <div v-else :class="['app-shell', { compact: preferences.compact, dense: preferences.denseUi }]">
   <div v-if="mobileNav" class="mobile-backdrop" @click="mobileNav = false"></div>
   <aside :class="['sidebar', { 'mobile-open': mobileNav }]">
-   <RouterLink to="/home" class="brand" aria-label="MiPeers home"><span class="brand-word">MiP<span class="brand-dot">.</span></span><span class="brand-caption">HUMAN SOFTWARE COMPANY</span></RouterLink>
+   <RouterLink to="/home" class="brand" aria-label="MiPeers home"><img :src="mipLogo" alt="MIP" class="brand-logo"></RouterLink>
    <div class="workspace-label">WORKSPACE</div>
    <nav><RouterLink v-for="item in nav" :key="item.path" :to="item.path" :class="['nav-link', { active: route.path === item.path }]"><Icon :name="item.icon"/><span>{{ item.name }}</span><span v-if="item.path === '/bookmarks' && saved.length" class="nav-count">{{ saved.length }}</span></RouterLink></nav>
    <div class="sidebar-bottom"><div class="workspace-status"><span class="status-dot"></span><div>Knowledge workspace<small>{{ demoMode ? 'Demo environment' : 'Connected environment' }}</small></div></div><RouterLink to="/settings" :class="['nav-link', {active: route.path === '/settings'}]"><Icon name="Settings"/><span>Settings</span></RouterLink><button class="profile" @click="router.push('/settings')"><span class="avatar">{{ preferences.name.charAt(0) || 'A' }}</span><span>{{ preferences.name }}<small>Workspace admin</small></span><Icon name="ChevronDown" :size="16"/></button></div>

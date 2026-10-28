@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next'
 import heroImage from './Mipeers logo.jpg'
+import mipLogo from './assets/mip-logo.svg'
 import { signIn } from './services/auth'
 import { isLive, toggleLive } from './services/liveMode'
 import { idleExpired, resetIdleTimer } from './services/idleTimeout'
@@ -38,14 +39,12 @@ function dismissError() { error.value = '' }
   <section class="login-panel">
    <div class="login-brand">
     <button :class="['live-toggle', 'login-live-toggle', { live: isLive }]" :aria-pressed="isLive" @click="toggleLive"><span class="live-toggle-dot"/>{{ isLive ? 'Live' : 'Demo' }}</button>
-    <span class="login-logo">MiP<span class="login-dot">.</span></span>
-    <span class="login-caption">HUMAN SOFTWARE COMPANY</span>
+    <img :src="mipLogo" alt="MIP" class="login-logo">
    </div>
    <form class="login-form" @submit.prevent="submit" novalidate>
     <label class="login-field"><Mail :size="18" /><input v-model="username" type="text" placeholder="Username" autocomplete="username" aria-label="Username" :disabled="pending" /></label>
     <label class="login-field"><Lock :size="18" /><input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Password" autocomplete="current-password" aria-label="Password" :disabled="pending" /><button type="button" class="login-password-toggle" :aria-label="showPassword ? 'Hide password' : 'Show password'" :disabled="pending" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></label>
     <div class="login-links"><a href="#" class="login-forgot" @click.prevent>Forgot your password?</a></div>
-    <p class="login-register"><span>Don't have an account?</span> <a href="#" @click.prevent>Register</a></p>
     <button type="submit" class="login-submit" :disabled="pending">{{ pending ? 'Signing in…' : 'Login' }}</button>
    </form>
   </section>
@@ -72,9 +71,7 @@ function dismissError() { error.value = '' }
 /* left panel */
 .login-panel { flex: 0 0 clamp(380px, 32vw, 505px); display: flex; flex-direction: column; padding: 9vh 6vw 5vh; background: linear-gradient(155deg, #0b1527, #081321 70%); border-right: 1px solid var(--line); }
 .login-brand { display: flex; flex-direction: column; margin-bottom: clamp(60px, 14vh, 150px); }
-.login-logo { font-family: Arial, Helvetica, sans-serif; font-weight: 900; font-size: 62px; letter-spacing: -2px; line-height: 1; background: linear-gradient(125deg, #6886ff, #3262fb 70%); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; width: max-content; }
-.login-dot { font-size: 46px; }
-.login-caption { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; background: linear-gradient(90deg, #33d7a2, #5498ff); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.login-logo { width: 220px; height: auto; display: block; }
 .login-form { display: flex; flex-direction: column; }
 .login-field { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; margin-bottom: 34px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .login-field input { flex: 1; min-width: 0; background: transparent; border: 0; color: #fff; font-size: 17px; }
@@ -86,8 +83,6 @@ function dismissError() { error.value = '' }
 .login-links { display: flex; justify-content: flex-end; margin-bottom: 34px; }
 .login-forgot { color: var(--muted); font-size: 12.5px; }
 .login-forgot:hover { color: #fff; }
-.login-register { text-align: center; font-size: 13px; color: var(--muted); margin: 0 0 34px; }
-.login-register a { color: var(--purple); font-weight: 600; margin-left: 5px; }
 .login-submit { align-self: flex-start; background: #7653da; border: 1px solid #9171e7; color: #fff; font-weight: 700; font-size: 16px; padding: 17px 48px; border-radius: 9px; box-shadow: 0 8px 20px #0004; }
 .login-submit:hover:not(:disabled) { background: #8962e9; }
 .login-submit:disabled { opacity: 0.7; cursor: not-allowed; }
