@@ -88,10 +88,10 @@
 .dense .drawer-heading { margin-bottom: 16px; }
 .dense .document-preview { padding: 18px; margin: 14px 0; }
 
-/* Client scope picker (chat toolbar) and the matching chips above the composer. */
-.client-picker { position: relative; margin-right: auto; min-width: 0; }
-/* Without the client picker (no client labels), the agent picker keeps the toolbar's spacing. */
-.agent-picker:not(:has(+ .client-picker)) { margin-right: auto; }
+/* Filter scope picker (chat toolbar, components/FilterPicker.vue) and the matching chips above the composer. */
+.filter-picker { position: relative; margin-right: auto; min-width: 0; }
+/* Without the filter picker (no label sets), the agent picker keeps the toolbar's spacing. */
+.agent-picker:not(:has(+ .filter-picker)) { margin-right: auto; }
 .client-select > svg:first-child { color: #8f9fd4; }
 .client-select > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 .client-options { left: 0; right: auto; }
@@ -117,4 +117,10 @@
 .ms-placeholder { color: #71809a; padding-left: 4px; }
 .ms-toggle { display: inline-flex; margin-left: auto; padding: 5px; border-radius: 6px; color: #97a6be; }
 .multi-select-field .ms-menu { left: 0; right: 0; min-width: 0; top: calc(100% + 6px); }
+/* FilterPicker (components/FilterPicker.vue): one section per label set inside the shared .ms-list/.agent-options styling. */
+.filter-panel { min-width: 260px; max-width: 320px; }
+.filter-groups { max-height: 320px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #37415c transparent; }
+.filter-group + .filter-group { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 4px; }
+.filter-group-heading { margin: 8px 12px 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.filter-clear { width: 100%; color: var(--purple); font-size: 12px; }
 @media (max-width: 720px) { .client-select > span { max-width: 110px; } .client-options { left: auto; right: 0; min-width: 0; width: max-content; max-width: calc(100vw - 24px); } .client-chips { padding: 10px 10px 0; } }

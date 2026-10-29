@@ -4,6 +4,11 @@ import { isLive } from './liveMode'
 
 export interface UploadResult { fileName: string }
 
+// TODO: generalize uploads the same way chat scoping was (see FilterPicker.vue / RagRequest.filters
+// in services/rag.ts) — let a document be tagged with label=value pairs across every label set, not
+// just one product+folder pair plus a separate client list. Would need pcProduct/pcFolder/pcClients
+// here to become a single NVP list (mirroring ragKnowledgeBase's own `folder` field), and the upload
+// dialog's product/folder/client fields replaced with a grouped multi-pick like FilterPicker's.
 /** Descriptive fields stored alongside the document — product/folder/agent/clients place it in the knowledge base, summary describes it. agent and clients are comma-separated lists. */
 export interface RagUploadMeta { product: string; folder: string; summary: string; agent: string; clients: string }
 

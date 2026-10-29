@@ -4,7 +4,9 @@ import { withTimeout } from './timeout'
 import { isLive } from './liveMode'
 import { summarizeTitle } from './title'
 
-export interface RagRequest { question: string; agentId: string; title: string; context: string; filter: string; clients: string[]; maxResults: number }
+/** One "label=value" scope pair, e.g. { label: 'client', value: 'Ubuntu Horizon Bank' } or { label: 'division', value: 'ILS' }. */
+export interface RagFilter { label: string; value: string }
+export interface RagRequest { question: string; agentId: string; title: string; context: string; filter: string; filters: RagFilter[]; maxResults: number }
 export interface RagSource { name: string; page: string }
 export interface RagResponse { answer: string; sources: RagSource[] }
 export interface ChatContext { context: string; usedChars: number; limitChars: number; percent: number }
@@ -81,8 +83,10 @@ export async function askKnowledge(request: RagRequest, signal?: AbortSignal): P
   pcTitle: request.title,
   pcContext: request.context,
   pcFilter: request.filter,
-  // Comma-separated client labels to scope the answer to (any of them); empty means all clients.
-  pcClients: request.clients.join(','),
+  // Comma-delimited "label=value" NVP pairs (the same shape ragKnowledgeBase's own `folder` field
+  // uses) to scope the answer to any label set — not just client — e.g.
+  // "client=Ubuntu Horizon Bank,division=ILS"; empty means no scope restriction.
+  pcClients: request.filters.map(f => `${f.label}=${f.value}`).join(','),
   piTopResult: request.maxResults,
  }
  const timeout = withTimeout(signal, 45000)
